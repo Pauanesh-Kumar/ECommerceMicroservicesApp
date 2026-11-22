@@ -1,0 +1,30 @@
+{
+  "profiles": {
+    "HTTP_CartService.API": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://localhost:57913"
+    },
+    "HTTPS_CartService.API": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:57912;http://localhost:57913"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}",
+      "environmentVariables": {
+        "ASPNETCORE_HTTPS_PORTS": "8089",
+        "ASPNETCORE_HTTP_PORTS": "8088"
+      },
+      "publishAllPorts": true,
+      "useSSL": true
+    }
+  }
+}

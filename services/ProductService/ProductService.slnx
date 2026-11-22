@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="../../shared/ECommerce.Shared/ECommerce.Shared.csproj" />
+  <Project Path="ProductService.API/ProductService.API.csproj" Id="f21653c8-92d3-481d-aaf9-d73b43304cf5"/>
+  <Project Path="ProductService.Application/ProductService.Application.csproj" />
+  <Project Path="ProductService.Contracts/ProductService.Contracts.csproj" />
+  <Project Path="ProductService.Domain/ProductService.Domain.csproj" />
+  <Project Path="ProductService.Infrastructure/ProductService.Infrastructure.csproj" />
+</Solution>

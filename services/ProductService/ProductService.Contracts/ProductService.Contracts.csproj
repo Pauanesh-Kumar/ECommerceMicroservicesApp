@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ProductService.Contracts</RootNamespace>
+  </PropertyGroup>
+  <!-- Deliberately zero ProjectReferences — Contracts must never depend on this
+       service's own Domain/Application/Infrastructure. It is consumed BY
+       Infrastructure (to publish/deserialize) but never the other way around. -->
+</Project>

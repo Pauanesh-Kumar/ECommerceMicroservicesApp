@@ -1,0 +1,31 @@
+{
+  "profiles": {
+    "HTTP_PaymentService.API": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://localhost:56711"
+    },
+    "HTTPS_PaymentService.API": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:56710;http://localhost:56711"
+    },
+
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}",
+      "environmentVariables": {
+        "ASPNETCORE_HTTPS_PORTS": "8087",
+        "ASPNETCORE_HTTP_PORTS": "8086"
+      },
+      "publishAllPorts": true,
+      "useSSL": true
+    }
+  }
+}

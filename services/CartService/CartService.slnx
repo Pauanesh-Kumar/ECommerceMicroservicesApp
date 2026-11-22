@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="CartService.API/CartService.API.csproj" />
+  <Project Path="CartService.Application/CartService.Application.csproj" />
+  <Project Path="CartService.Domain/CartService.Domain.csproj" />
+  <Project Path="CartService.Infrastructure/CartService.Infrastructure.csproj" />
+  <Project Path="CartService.Contracts/CartService.Contracts.csproj" />
+</Solution>
+
+

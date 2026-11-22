@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ProductService.Domain</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Domain has ZERO external dependencies — pure C# objects only -->
+    <!-- Result / ValueObject primitives live here -->
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Shared kernel (Result, ValueObjects, base types) -->
+    <ProjectReference Include="..\..\..\shared\ECommerce.Shared\ECommerce.Shared.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="AnalyticsService.API/AnalyticsService.API.csproj" />
+  <Project Path="AnalyticsService.Application/AnalyticsService.Application.csproj" />
+  <Project Path="AnalyticsService.Domain/AnalyticsService.Domain.csproj" />
+  <Project Path="AnalyticsService.Infrastructure/AnalyticsService.Infrastructure.csproj" />
+</Solution>
+

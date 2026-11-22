@@ -1,0 +1,30 @@
+{
+  "profiles": {
+    "HTTPS_ProductService.API": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:59479;http://localhost:59480"
+    },
+    "HTTP_ProductService.API": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://localhost:59480"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}",
+      "environmentVariables": {
+        "ASPNETCORE_HTTPS_PORTS": "8085",
+        "ASPNETCORE_HTTP_PORTS": "8084"
+      },
+      "publishAllPorts": true,
+      "useSSL": true
+    }
+  }
+}

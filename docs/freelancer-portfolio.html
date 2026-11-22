@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>E-Commerce Microservices | Portfolio</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #0b1120; color: #eef4ff; }
+    body { margin: 0; line-height: 1.6; }
+    main { max-width: 1100px; margin: auto; padding: 3rem 1.5rem; }
+    .eyebrow, h2 { color: #72e0df; }
+    h1 { font-size: clamp(2.6rem, 7vw, 5rem); line-height: 1.05; max-width: 850px; margin: .5rem 0 1.5rem; }
+    .lead { color: #c0d0e9; font-size: 1.2rem; max-width: 780px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; }
+    article, .notice { background: #16243d; border: 1px solid #34507a; border-radius: 1rem; padding: 1.4rem; }
+    article h3 { margin-top: 0; }
+    a { color: #95d8ff; }
+    a:focus-visible { outline: 3px solid #ffd479; outline-offset: 3px; }
+    section { margin-top: 3.5rem; }
+    .notice { border-color: #ffd479; color: #ffecbf; }
+    footer { margin-top: 3rem; color: #a7bad7; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">SOFTWARE ENGINEERING / PORTFOLIO CASE STUDY</p>
+    <h1>E-Commerce Microservices</h1>
+    <p class="lead">A .NET backend exploring service boundaries, event-driven commerce, resilient integrations and data ownership.</p>
+    <p>.NET 10 &nbsp; / &nbsp; Kafka &nbsp; / &nbsp; PostgreSQL &nbsp; / &nbsp; MongoDB &nbsp; / &nbsp; Redis</p>
+    <p><a href="../README.md">Project README</a> &nbsp; | &nbsp; <a href="architecture.md">Architecture and validation</a> &nbsp; | &nbsp; <a href="freelancer-portfolio.pdf">Download PDF</a></p>
+  </header>
+  <section class="notice"><strong>Work in progress.</strong> Fresh restore still fails for two services; integrated operation and deployment are not yet verified. This is an architectural portfolio, not a claim of production readiness.</section>
+  <section>
+    <h2>Seven focused services</h2>
+    <div class="grid">
+      <article><h3>Identity &amp; catalog</h3><p>User registration and authentication alongside a MongoDB-backed product catalog.</p></article>
+      <article><h3>Cart &amp; orders</h3><p>Redis-backed carts initiate order creation through an HTTP client. Order creation records an idempotency key and outbox message.</p></article>
+      <article><h3>Payments</h3><p>Kafka-based processing, PostgreSQL persistence and a signature-verified Razorpay webhook endpoint.</p></article>
+      <article><h3>Notifications &amp; analytics</h3><p>Event consumers support notifications, event storage and a reporting projection.</p></article>
+    </div>
+  </section>
+  <section>
+    <h2>Design highlights</h2>
+    <div class="grid">
+      <article><h3>Service boundaries</h3><p>API, application, domain and infrastructure projects make responsibilities explicit.</p></article>
+      <article><h3>Event-driven integration</h3><p>Kafka consumers and outbox publishers support asynchronous communication across service boundaries.</p></article>
+      <article><h3>Delivery &amp; observability</h3><p>Docker Compose, a YARP gateway and tracing-related packages form a basis for local deployment and diagnostics.</p></article>
+    </div>
+  </section>
+  <section><h2>Next steps</h2><p>Resolve build and dependency warnings, secure configuration and Git history, and verify service integrations, authorization and deployment using automated tests.</p></section>
+  <footer>Portfolio by Pauanesh Kumar &middot; <a href="https://github.com/Pauanesh-Kumar">GitHub</a></footer>
+</main>
+</body>
+</html>

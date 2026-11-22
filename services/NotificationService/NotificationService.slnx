@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="../../shared/ECommerce.Shared/ECommerce.Shared.csproj" />
+  <Project Path="NotificationService.API/NotificationService.API.csproj" Id="f21653c8-92d3-481d-aaf9-d73b43304cf5" />
+  <Project Path="NotificationService.Application/NotificationService.Application.csproj" />
+  <Project Path="NotificationService.Domain/NotificationService.Domain.csproj" />
+  <Project Path="NotificationService.Infrastructure/NotificationService.Infrastructure.csproj" />
+</Solution>

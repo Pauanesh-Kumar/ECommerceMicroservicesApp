@@ -1,0 +1,30 @@
+{
+  "profiles": {
+    "HTTPS_AnalyticsService.API": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:63696;http://localhost:63697"
+    },
+    "HTTP_AnalyticsService.API": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://localhost:63697"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}",
+      "environmentVariables": {
+        "ASPNETCORE_HTTPS_PORTS": "8091",
+        "ASPNETCORE_HTTP_PORTS": "8090"
+      },
+      "publishAllPorts": true,
+      "useSSL": true
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "profiles": {
+    "HTTP_OrderService.API": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://localhost:60065"
+    },
+    "HTTPS_OrderService.API": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:60064;http://localhost:60065"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}",
+      "environmentVariables": {
+        "ASPNETCORE_HTTPS_PORTS": "8087",
+        "ASPNETCORE_HTTP_PORTS": "8086"
+      },
+      "publishAllPorts": true,
+      "useSSL": true
+    }
+  }
+}
