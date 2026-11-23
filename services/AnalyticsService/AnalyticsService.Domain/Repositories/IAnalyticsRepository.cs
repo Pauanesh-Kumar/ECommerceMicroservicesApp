@@ -6,6 +6,7 @@ public sealed record CursorPageResult<T>(IReadOnlyList<T> Items, string? NextCur
 
 public interface IAnalyticsRepository
 {
+    Task EnsureSourceEventIndexAsync(CancellationToken ct = default);
     Task InsertAsync(AnalyticsEvent evt, CancellationToken ct = default);
     Task<IReadOnlyList<AnalyticsEvent>> GetUnprojectedBatchAsync(int batchSize, CancellationToken ct = default);
     Task MarkProjectedAsync(IEnumerable<MongoDB.Bson.ObjectId> ids, CancellationToken ct = default);

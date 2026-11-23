@@ -106,7 +106,7 @@ class Provider(BaseHTTPRequestHandler):
 
 
 def main():
-	ports = {name: unused_port() for name in ("KAFKA", "POSTGRES", "MONGO", "REDIS", "PRODUCT", "CART", "ORDER", "PAYMENT")}
+	ports = {name: unused_port() for name in ("KAFKA", "POSTGRES", "MONGO", "REDIS", "PRODUCT", "CART", "ORDER", "PAYMENT", "ANALYTICS")}
 	env = os.environ.copy()
 	for key in list(env):
 		if key.startswith(("ConnectionStrings__", "Kafka__", "Redis__", "Jwt__", "Razorpay__", "Services__", "OpenTelemetry__")):
@@ -121,14 +121,15 @@ def main():
 	logs = []
 	provider = None
 	started = False
+	broker_paused = False
 	test_directory = tempfile.TemporaryDirectory(prefix="ecommerce-saga-test-")
 	try:
-		for service in ("Product", "Cart", "Order", "Payment"):
+		for service in ("Product", "Cart", "Order", "Payment", "Analytics"):
 			project_file = ROOT / "services" / f"{service}Service" / f"{service}Service.API" / f"{service}Service.API.csproj"
 			subprocess.run(["dotnet", "build", str(project_file), "--nologo", "-v", "quiet"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
 		started = True
 		subprocess.run(compose + ["up", "-d", "--wait", "--wait-timeout", "180"], env=env, check=True)
-		for database in ("orderdb", "paymentdb"):
+		for database in ("orderdb", "paymentdb", "analyticsdb"):
 			subprocess.run(compose + ["exec", "-T", "postgres", "createdb", "-U", "flowtest", database], env=env, check=True)
 		for topic in ("order-created", "stock-release", "product-stock", "payment-requested", "payment-status", "order-confirmed", "order-cancelled"):
 			subprocess.run(compose + ["exec", "-T", "kafka", "kafka-topics", "--bootstrap-server", "kafka:29092", "--create", "--if-not-exists", "--topic", topic, "--partitions", "1", "--replication-factor", "1"], env=env, check=True, stdout=subprocess.DEVNULL)
@@ -147,9 +148,10 @@ def main():
 			"Cart": {"Services__OrderServiceBaseUrl": f"http://127.0.0.1:{ports['ORDER']}"},
 			"Order": {"ConnectionStrings__OrderServiceDb": f"Host=127.0.0.1;Port={ports['POSTGRES']};Database=orderdb;Username=flowtest;Password=local-test-only"},
 			"Payment": {"ConnectionStrings__PaymentServiceDb": f"Host=127.0.0.1;Port={ports['POSTGRES']};Database=paymentdb;Username=flowtest;Password=local-test-only", "Razorpay__BaseUrl": f"http://127.0.0.1:{provider.server_port}/v1", "Razorpay__KeyId": "test-key", "Razorpay__KeySecret": "test-key-secret", "Razorpay__WebhookSecret": WEBHOOK_SECRET},
+			"Analytics": {"ConnectionStrings__AnalyticsServiceDb": f"mongodb://127.0.0.1:{ports['MONGO']}", "ConnectionStrings__AnalyticsReportingDb": f"Host=127.0.0.1;Port={ports['POSTGRES']};Database=analyticsdb;Username=flowtest;Password=local-test-only"},
 		}
 		with contextlib.nullcontext(test_directory.name) as temp:
-			for service in ("Product", "Order", "Payment", "Cart"):
+			for service in ("Product", "Order", "Payment", "Cart", "Analytics"):
 				service_env = env.copy()
 				service_env.update(common)
 				service_env.update(settings[service])
@@ -174,13 +176,15 @@ def main():
 			product_id = product["productId"]
 			status, cart = request(f"http://127.0.0.1:{ports['CART']}/api/cart/items", "POST", {"productId": product_id, "name": "Test product", "unitPrice": 25, "quantity": 2}, auth)
 			assert status == 200 and cart["total"] == 50, f"Cart update failed: {status} {cart}"
-			subprocess.run(compose + ["stop", "kafka"], env=env, check=True)
+			subprocess.run(compose + ["pause", "kafka"], env=env, check=True)
+			broker_paused = True
 			status, checkout = request(f"http://127.0.0.1:{ports['CART']}/api/cart/checkout", "POST", {}, {**auth, "Idempotency-Key": "saga-" + uuid.uuid4().hex})
 			assert status == 200, f"Checkout failed: {status} {checkout}"
 			order_id = checkout["orderId"]
 			assert order_sql(f'SELECT count(*) FROM outbox_messages WHERE "Key" = \'{order_id}\' AND "Topic" = \'order-created\' AND "ProcessedAtUtc" IS NULL') == "1", "Order event was not retained during the Kafka outage"
-			subprocess.run(compose + ["start", "--wait", "--wait-timeout", "180", "kafka"], env=env, check=True)
-			print("PASS: order outbox retained during Kafka outage; broker restarted")
+			subprocess.run(compose + ["unpause", "kafka"], env=env, check=True)
+			broker_paused = False
+			print("PASS: order outbox retained during Kafka suspension; broker resumed")
 			status, cart = request(f"http://127.0.0.1:{ports['CART']}/api/cart/", headers=auth)
 			assert status == 200 and not cart["items"], f"Cart not cleared: {status} {cart}"
 
@@ -226,6 +230,24 @@ def main():
 			assert status == 200, f"Webhook replay failed: {status} {result}"
 			print("PASS: checkout -> Kafka stock reservation -> payment -> signed webhook -> confirmed order")
 
+			event_id = order_sql(f'SELECT "Id" FROM outbox_messages WHERE "Key" = \'{order_id}\' AND "Topic" = \'order-created\'')
+			source_id = "order-created:event:" + uuid.UUID(event_id).hex
+			def analytics_count():
+				js = f'print(db.getSiblingDB("analyticsservice_db").events.countDocuments({{SourceEventId: "{source_id}"}}))'
+				return int(subprocess.run(compose + ["exec", "-T", "mongo", "mongosh", "--quiet", "--eval", js], env=env, check=True, capture_output=True, text=True).stdout.strip())
+			eventually("Analytics order-created event", lambda: analytics_count() == 1)
+			order_sql(f'UPDATE outbox_messages SET "ProcessedAtUtc" = NULL WHERE "Id" = \'{event_id}\'')
+			subprocess.run(compose + ["exec", "-T", "kafka", "kafka-console-consumer", "--bootstrap-server", "kafka:29092", "--topic", "order-created", "--from-beginning", "--max-messages", "2", "--timeout-ms", "60000"], env=env, check=True, capture_output=True, text=True, timeout=75)
+			def analytics_caught_up():
+				output = subprocess.run(compose + ["exec", "-T", "kafka", "kafka-consumer-groups", "--bootstrap-server", "kafka:29092", "--describe", "--group", "analytics-service-group"], env=env, check=True, capture_output=True, text=True).stdout
+				return any(len(row) >= 6 and row[1] == "order-created" and row[3] == row[4] and int(row[4]) >= 2 for row in (line.split() for line in output.splitlines()))
+			eventually("Analytics duplicate event offset committed", analytics_caught_up)
+			assert analytics_count() == 1, "Analytics duplicated the order-created event"
+			print("PASS: Analytics deduplicates replayed outbox event and commits its offset")
+
+			def mongo_eval(js):
+				return subprocess.run(compose + ["exec", "-T", "mongo", "mongosh", "--quiet", "--eval", js], env=env, check=True, capture_output=True, text=True).stdout.strip()
+			mongo_eval('db.getSiblingDB("analyticsservice_db").runCommand({collMod: "events", validator: {$nor: [{SourceTopic: "order-cancelled"}]}})')
 			status, scarce = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/", "POST", {"sku": "scarce-" + uuid.uuid4().hex, "name": "Scarce", "description": "test", "category": "test", "price": 10, "currency": "INR", "initialStock": 1}, auth)
 			assert status == 201, f"Scarce product creation failed: {status} {scarce}"
 			scarce_id = scarce["productId"]
@@ -247,6 +269,11 @@ def main():
 			assert status == 404, f"Payment created for unavailable stock: {status} {missing_payment}"
 			assert len(Provider.calls) == 1, Provider.calls
 			print("PASS: insufficient stock cancels order without charging")
+			eventually("Analytics rejected write", lambda: "Ingestion failed at" in (Path(temp) / "Analytics.log").read_text(encoding="utf-8"))
+			assert mongo_eval('print(db.getSiblingDB("analyticsservice_db").events.countDocuments({SourceTopic: "order-cancelled"}))') == "0"
+			mongo_eval('db.getSiblingDB("analyticsservice_db").runCommand({collMod: "events", validator: {}})')
+			eventually("Analytics ingestion after database failure", lambda: mongo_eval('print(db.getSiblingDB("analyticsservice_db").events.countDocuments({SourceTopic: "order-cancelled"}))') == "1")
+			print("PASS: Analytics retries failed MongoDB write without losing the Kafka event")
 
 			status, product = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/", "POST", {"sku": "failed-" + uuid.uuid4().hex, "name": "Failure test", "description": "test", "category": "test", "price": 10, "currency": "INR", "initialStock": 3}, auth)
 			assert status == 201, f"Product creation failed: {status} {product}"
@@ -298,6 +325,8 @@ def main():
 			provider.shutdown()
 			provider.server_close()
 		if started:
+			if broker_paused:
+				subprocess.run(compose + ["unpause", "kafka"], env=env, check=True)
 			subprocess.run(compose + ["down", "--remove-orphans"], env=env, check=True)
 
 

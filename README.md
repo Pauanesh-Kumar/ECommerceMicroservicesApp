@@ -76,7 +76,7 @@ Service-local endpoints include `/api/users`, `/api/auth`, `/api/products`, `/ap
 
 ## Validation and limitations
 
-Run the seven xUnit projects with `dotnet test .\tests\ECommerce.Tests.slnx`. With Docker Desktop running, `python .\tests\ECommerce.Tests.Integration\run_checkout_saga.py` exercises isolated checkout, compensation, a Kafka broker outage, an Order database failure followed by retry, and an abrupt Order-process restart. It uses disposable test data and a local payment-provider stub, not Razorpay itself. Order's consumer retries failed events with backoff; Product, Payment and Analytics still need crash-safe processing. User and Notification retain critical/high package advisories. See [validation and restoration](docs/architecture.md#validation-and-restoration).
+Run the seven xUnit projects with `dotnet test .\tests\ECommerce.Tests.slnx`. With Docker Desktop running, `python .\tests\ECommerce.Tests.Integration\run_checkout_saga.py` exercises isolated checkout and compensation, Kafka suspension, Order database failure and process restart, and Analytics duplicate delivery and database-write retry. It uses disposable test data and a local payment-provider stub, not Razorpay itself. Product and Payment still need crash-safe processing; User and Notification retain critical/high package advisories. See [validation and restoration](docs/architecture.md#validation-and-restoration).
 
 ## Author
 

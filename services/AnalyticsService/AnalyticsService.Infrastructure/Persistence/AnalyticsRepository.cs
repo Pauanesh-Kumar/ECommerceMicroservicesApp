@@ -9,8 +9,28 @@ public sealed class AnalyticsRepository(IMongoDatabase database) : IAnalyticsRep
 {
     private readonly IMongoCollection<AnalyticsEvent> _collection = database.GetCollection<AnalyticsEvent>("events");
 
-    public Task InsertAsync(AnalyticsEvent evt, CancellationToken ct = default)
-        => _collection.InsertOneAsync(evt, cancellationToken: ct);
+    public async Task EnsureSourceEventIndexAsync(CancellationToken ct = default)
+    {
+        var keys = Builders<AnalyticsEvent>.IndexKeys.Ascending(e => e.SourceEventId);
+        var options = new CreateIndexOptions<AnalyticsEvent>
+        {
+            Name = "ux_source_event_id",
+            Unique = true,
+            PartialFilterExpression = new BsonDocument("SourceEventId", new BsonDocument("$type", "string"))
+        };
+        await _collection.Indexes.CreateOneAsync(new CreateIndexModel<AnalyticsEvent>(keys, options), cancellationToken: ct);
+    }
+
+    public async Task InsertAsync(AnalyticsEvent evt, CancellationToken ct = default)
+    {
+        try { await _collection.InsertOneAsync(evt, cancellationToken: ct); }
+        catch (MongoWriteException ex) when (ex.WriteError.Category == ServerErrorCategory.DuplicateKey && evt.SourceEventId is not null)
+        {
+            var existing = await _collection.Find(e => e.SourceEventId == evt.SourceEventId).FirstOrDefaultAsync(ct);
+            if (existing is null || existing.SourceTopic != evt.SourceTopic || existing.RawPayload != evt.RawPayload)
+                throw;
+        }
+    }
 
     public async Task<IReadOnlyList<AnalyticsEvent>> GetUnprojectedBatchAsync(int batchSize, CancellationToken ct = default)
         => await _collection.Find(e => !e.ProjectedToReporting).Limit(batchSize).ToListAsync(ct);

@@ -34,6 +34,7 @@ public class AnalyticsQueryTests
             Cursor = cursor; Limit = limit; EventType = eventType;
             return Task.FromResult(new CursorPageResult<AnalyticsEvent>([new AnalyticsEvent()], "next", true));
         }
+        public Task EnsureSourceEventIndexAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task InsertAsync(AnalyticsEvent evt, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<AnalyticsEvent>> GetUnprojectedBatchAsync(int batchSize, CancellationToken ct = default) => throw new NotSupportedException();
         public Task MarkProjectedAsync(IEnumerable<ObjectId> ids, CancellationToken ct = default) => throw new NotSupportedException();

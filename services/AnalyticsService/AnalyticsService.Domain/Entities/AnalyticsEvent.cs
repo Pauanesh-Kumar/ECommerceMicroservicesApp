@@ -13,10 +13,11 @@ namespace AnalyticsService.Domain.Entities;
 public sealed class AnalyticsEvent
 {
     [BsonId] public ObjectId Id { get; init; } = ObjectId.GenerateNewId();
+    [BsonIgnoreIfNull] public string? SourceEventId { get; init; }
     public string SourceTopic { get; init; } = default!;
     public string EventType { get; init; } = default!;
-    public Guid? OrderId { get; init; }
-    public Guid? UserId { get; init; }
+    [BsonSerializer(typeof(NullableStandardGuidSerializer))] public Guid? OrderId { get; init; }
+    [BsonSerializer(typeof(NullableStandardGuidSerializer))] public Guid? UserId { get; init; }
     public decimal? Amount { get; init; }
     public string RawPayload { get; init; } = default!;
     public DateTime IngestedAtUtc { get; init; } = DateTime.UtcNow;

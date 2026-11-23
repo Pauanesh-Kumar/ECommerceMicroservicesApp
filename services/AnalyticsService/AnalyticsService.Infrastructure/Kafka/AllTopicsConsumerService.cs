@@ -34,25 +34,56 @@ public sealed class AllTopicsConsumerService(
         consumer.Subscribe(_settings.Topics);
         logger.LogInformation("[AnalyticsService] Subscribed to {Topics}", string.Join(",", _settings.Topics));
 
+        var failures = 0;
+        var indexReady = false;
         while (!stoppingToken.IsCancellationRequested)
         {
+            ConsumeResult<string, string>? result = null;
             try
             {
-                var result = consumer.Consume(stoppingToken);
+                if (!indexReady)
+                {
+                    using var scope = scopeFactory.CreateScope();
+                    scope.ServiceProvider.GetRequiredService<IAnalyticsRepository>()
+                        .EnsureSourceEventIndexAsync(stoppingToken).GetAwaiter().GetResult();
+                    indexReady = true;
+                }
+
+                result = consumer.Consume(stoppingToken);
                 if (result?.Message?.Value is null) continue;
 
-                ProcessAsync(result.Topic, result.Message.Value, stoppingToken).GetAwaiter().GetResult();
+                var sourceId = GetSourceEventId(result);
+                ProcessAsync(result.Topic, result.Message.Value, sourceId, stoppingToken).GetAwaiter().GetResult();
                 consumer.Commit(result);
+                failures = 0;
             }
-            catch (OperationCanceledException) { break; }
-            catch (ConsumeException ex) { logger.LogError(ex, "[AnalyticsService] Kafka consume error"); }
-            catch (Exception ex) { logger.LogError(ex, "[AnalyticsService] Unhandled processing error"); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (ConsumeException ex) when (!ex.Error.IsFatal)
+            {
+                logger.LogError(ex, "[AnalyticsService] Kafka consume error");
+            }
+            catch (Exception ex) when (result is not null || !indexReady)
+            {
+                failures++;
+                var delay = TimeSpan.FromSeconds(Math.Min(30, Math.Pow(2, Math.Min(failures - 1, 5))));
+                logger.LogError(ex, "[AnalyticsService] Ingestion failed at {Offset}; retrying in {Delay}", result?.TopicPartitionOffset, delay);
+                if (result is not null) consumer.Seek(result.TopicPartitionOffset);
+                try { Task.Delay(delay, stoppingToken).GetAwaiter().GetResult(); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            }
         }
 
         consumer.Close();
     }
 
-    private async Task ProcessAsync(string topic, string rawJson, CancellationToken ct)
+    private static string GetSourceEventId(ConsumeResult<string, string> result)
+    {
+        if (result.Message.Headers is not null && result.Message.Headers.TryGetLastBytes("eventId", out var bytes) && bytes.Length == 16)
+            return $"{result.Topic}:event:{new Guid(bytes):N}";
+        return $"{result.Topic}:offset:{result.Partition.Value}:{result.Offset.Value}";
+    }
+
+    private async Task ProcessAsync(string topic, string rawJson, string sourceId, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var repo = scope.ServiceProvider.GetRequiredService<IAnalyticsRepository>();
@@ -67,15 +98,18 @@ public sealed class AllTopicsConsumerService(
             var root = doc.RootElement;
             // Envelope topics (product-stock, payment-status) carry {eventType, payload};
             // direct-shape topics (order-created, order-confirmed, ...) carry the DTO directly.
-            if (root.TryGetProperty("eventType", out var et)) eventType = et.GetString() ?? topic;
-            if (root.TryGetProperty("orderId", out var oid) && oid.TryGetGuid(out var g)) orderId = g;
-            if (root.TryGetProperty("amount", out var amt) && amt.TryGetDecimal(out var a)) amount = a;
+            if (root.ValueKind == JsonValueKind.Object)
+            {
+                if (root.TryGetProperty("eventType", out var et) && et.ValueKind == JsonValueKind.String) eventType = et.GetString() ?? topic;
+                if (root.TryGetProperty("orderId", out var oid) && oid.ValueKind == JsonValueKind.String && oid.TryGetGuid(out var g)) orderId = g;
+                if (root.TryGetProperty("amount", out var amt) && amt.ValueKind == JsonValueKind.Number && amt.TryGetDecimal(out var a)) amount = a;
+            }
         }
         catch (JsonException) { /* best-effort enrichment only — never block ingestion on parse errors */ }
 
         await repo.InsertAsync(new AnalyticsEvent
         {
-            SourceTopic = topic, EventType = eventType, OrderId = orderId, Amount = amount, RawPayload = rawJson
+            SourceEventId = sourceId, SourceTopic = topic, EventType = eventType, OrderId = orderId, Amount = amount, RawPayload = rawJson
         }, ct);
     }
 }
