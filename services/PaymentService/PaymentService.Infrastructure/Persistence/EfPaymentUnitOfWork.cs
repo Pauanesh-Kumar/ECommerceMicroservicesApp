@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using PaymentService.Application.Interfaces;
 using PaymentService.Domain.Entities;
 
@@ -30,7 +31,7 @@ public sealed class EfPaymentUnitOfWork(PaymentDbContext db) : IPaymentUnitOfWor
             await db.SaveChangesAsync(ct);
             return true;
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             return false; // unique-constraint race lost (OrderId or InboxMessage.EventId) — treat as no-op
         }

@@ -1,7 +1,11 @@
 using Confluent.Kafka;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
+using MongoDB.Bson.Serialization.Serializers;
 using MongoDB.Driver;
+using ProductService.Domain.Entities;
 using ProductService.Domain.Repositories;
 using ProductService.Infrastructure.Kafka;
 using ProductService.Infrastructure.Persistence;
@@ -12,6 +16,15 @@ public static class InfrastructureServiceExtensions
 {
     public static IServiceCollection AddProductInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        if (!BsonClassMap.IsClassMapRegistered(typeof(Product)))
+        {
+            BsonClassMap.RegisterClassMap<Product>(map =>
+            {
+                map.AutoMap();
+                map.MapIdMember(product => product.Id).SetSerializer(new GuidSerializer(GuidRepresentation.Standard));
+            });
+        }
+
         services.AddSingleton<IMongoClient>(_ => new MongoClient(configuration.GetConnectionString("ProductServiceDb")));
         services.AddSingleton<IMongoDatabase>(sp => sp.GetRequiredService<IMongoClient>().GetDatabase("productservice_db"));
 

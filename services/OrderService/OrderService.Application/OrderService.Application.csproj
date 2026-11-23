@@ -14,7 +14,6 @@
 
     <!-- EF Core for DbContext usage -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" />
 
     <!-- Logging abstraction only — no concrete logger in Application (DIP) -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />

@@ -14,7 +14,7 @@ public class CheckoutTests
         var cart = new FakeCartRepository(new Cart(userId, []));
         var orders = new FakeOrderClient(new CreateOrderClientResult(true, Guid.NewGuid(), null));
 
-        var result = await new CheckoutCommandHandler(cart, orders).Handle(new(userId, "key"), default);
+        var result = await new CheckoutCommandHandler(cart, orders).Handle(new(userId, "key", "token"), default);
 
         Assert.False(result.Success);
         Assert.Equal("Cart is empty.", result.Error);
@@ -33,11 +33,12 @@ public class CheckoutTests
         var cart = new FakeCartRepository(new Cart(userId, [new(productId, "Item", 15m, 2)]));
         var orders = new FakeOrderClient(new CreateOrderClientResult(success, success ? orderId : null, success ? null : "failed"));
 
-        var result = await new CheckoutCommandHandler(cart, orders).Handle(new(userId, "retry-key"), default);
+        var result = await new CheckoutCommandHandler(cart, orders).Handle(new(userId, "retry-key", "token"), default);
 
         Assert.Equal(success, result.Success);
         Assert.Equal(success, cart.Cleared);
         Assert.Equal("retry-key", orders.Key);
+        Assert.Equal("token", orders.AccessToken);
         Assert.Equal(userId, orders.UserId);
         var item = Assert.Single(orders.Items!);
         Assert.Equal(productId, item.ProductId);
@@ -58,10 +59,11 @@ public class CheckoutTests
         public bool Called { get; private set; }
         public Guid UserId { get; private set; }
         public string? Key { get; private set; }
+        public string? AccessToken { get; private set; }
         public IReadOnlyList<OrderLineForCreation>? Items { get; private set; }
-        public Task<CreateOrderClientResult> CreateOrderAsync(Guid userId, IReadOnlyList<OrderLineForCreation> items, string idempotencyKey, CancellationToken ct = default)
+        public Task<CreateOrderClientResult> CreateOrderAsync(Guid userId, IReadOnlyList<OrderLineForCreation> items, string idempotencyKey, string accessToken, CancellationToken ct = default)
         {
-            Called = true; UserId = userId; Items = items; Key = idempotencyKey;
+            Called = true; UserId = userId; Items = items; Key = idempotencyKey; AccessToken = accessToken;
             return Task.FromResult(result);
         }
     }

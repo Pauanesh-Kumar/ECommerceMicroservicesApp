@@ -29,7 +29,7 @@ public sealed class RazorpayPaymentGateway : IPaymentGateway
     {
         _settings = options.Value;
         _http = http;
-        _http.BaseAddress = new Uri(_settings.BaseUrl);
+        _http.BaseAddress = new Uri(_settings.BaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
         var authBytes = Encoding.UTF8.GetBytes($"{_settings.KeyId}:{_settings.KeySecret}");
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(authBytes));
         _logger = logger;
@@ -43,7 +43,7 @@ public sealed class RazorpayPaymentGateway : IPaymentGateway
 
         try
         {
-            var response = await _http.PostAsJsonAsync("/orders", payload, ct);
+            var response = await _http.PostAsJsonAsync("orders", payload, ct);
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(ct);

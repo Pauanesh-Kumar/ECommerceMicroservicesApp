@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using CartService.Application.Interfaces;
 using CartService.Contracts;
@@ -19,7 +20,7 @@ public sealed class OrderServiceClient(
     IHttpClientFactory httpClientFactory, ILogger<OrderServiceClient> logger) : IOrderServiceClient
 {
     public async Task<CreateOrderClientResult> CreateOrderAsync(
-        Guid userId, IReadOnlyList<OrderLineForCreation> items, string idempotencyKey, CancellationToken ct = default)
+        Guid userId, IReadOnlyList<OrderLineForCreation> items, string idempotencyKey, string accessToken, CancellationToken ct = default)
     {
         var client = httpClientFactory.CreateClient("OrderService");
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/orders")
@@ -28,6 +29,7 @@ public sealed class OrderServiceClient(
                 userId, items.Select(i => new CreateOrderLineRequest(i.ProductId, i.Name, i.UnitPrice, i.Quantity)).ToList()))
         };
         request.Headers.Add("Idempotency-Key", idempotencyKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
         try
         {

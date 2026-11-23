@@ -13,5 +13,5 @@ public sealed record CreateOrderClientResult(bool Success, Guid? OrderId, string
 public interface IOrderServiceClient
 {
     Task<CreateOrderClientResult> CreateOrderAsync(
-        Guid userId, IReadOnlyList<OrderLineForCreation> items, string idempotencyKey, CancellationToken ct = default);
+        Guid userId, IReadOnlyList<OrderLineForCreation> items, string idempotencyKey, string accessToken, CancellationToken ct = default);
 }

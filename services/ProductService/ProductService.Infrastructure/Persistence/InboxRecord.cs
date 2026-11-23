@@ -11,7 +11,7 @@ namespace ProductService.Infrastructure.Persistence;
 /// </summary>
 public sealed class InboxRecord
 {
-    [BsonId] public Guid EventId { get; init; }
+    [BsonId, BsonGuidRepresentation(GuidRepresentation.Standard)] public Guid EventId { get; init; }
     public DateTime ProcessedAtUtc { get; init; } = DateTime.UtcNow;
 }
 

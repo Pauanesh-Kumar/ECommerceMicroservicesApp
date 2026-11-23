@@ -19,9 +19,9 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
 
     <!-- ── GraphQL ──────────────────────────────────────────────────── -->
-    <PackageReference Include="HotChocolate.AspNetCore" Version="14.3.0" />
-    <PackageReference Include="HotChocolate.Data" Version="14.3.0" />
-    <PackageReference Include="HotChocolate.AspNetCore.Authorization" Version="13.*" />
+    <PackageReference Include="HotChocolate.AspNetCore" Version="14.3.1" />
+    <PackageReference Include="HotChocolate.Data" Version="14.3.1" />
+    <PackageReference Include="HotChocolate.AspNetCore.Authorization" Version="14.3.1" />
 
     <!-- ── MediatR ──────────────────────────────────────────────────── -->
     <PackageReference Include="MediatR" Version="12.4.1" />
@@ -31,7 +31,7 @@
 
     <!-- ── OpenAPI / Scalar ─────────────────────────────────────────── -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
-    <PackageReference Include="Microsoft.OpenApi" Version="2.0.0" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.16.10" />
 
     <!-- ── OpenTelemetry ────────────────────────────────────────────── -->

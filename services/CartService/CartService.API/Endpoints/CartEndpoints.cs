@@ -2,6 +2,7 @@ using CartService.Application.Commands.Checkout;
 using CartService.Domain.Entities;
 using CartService.Domain.Repositories;
 using MediatR;
+using System.Net.Http.Headers;
 using System.Security.Claims;
 
 namespace CartService.API.Endpoints;
@@ -37,8 +38,13 @@ public static class CartEndpoints
 
         cart.MapPost("/checkout", async (ClaimsPrincipal user, HttpRequest http, ISender mediator, CancellationToken ct) =>
         {
+            if (!AuthenticationHeaderValue.TryParse(http.Headers.Authorization.ToString(), out var authorization)
+                || !string.Equals(authorization.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(authorization.Parameter))
+                return Results.Unauthorized();
+
             var idempotencyKey = http.Headers["Idempotency-Key"].FirstOrDefault() ?? Guid.NewGuid().ToString();
-            var result = await mediator.Send(new CheckoutCommand(GetUserId(user), idempotencyKey), ct);
+            var result = await mediator.Send(new CheckoutCommand(GetUserId(user), idempotencyKey, authorization.Parameter), ct);
             return result.Success ? Results.Ok(new { orderId = result.OrderId }) : Results.BadRequest(new { error = result.Error });
         });
 

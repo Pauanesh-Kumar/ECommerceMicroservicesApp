@@ -4,7 +4,7 @@ A .NET 10 backend portfolio project exploring a distributed commerce system with
 
 **Portfolio:** [PNG overview](docs/freelancer-portfolio.png) | [Animated GIF](docs/freelancer-portfolio.gif) | [PDF case study](docs/freelancer-portfolio.pdf) | [Web case study](docs/freelancer-portfolio.html) | [Architecture](docs/architecture.md)
 
-**Status: work in progress, not production-ready.** All service solutions, Shared and Gateway build with warnings, and the local service containers and gateway have reported healthy. End-to-end flows have not been verified. See [validation and restoration](docs/architecture.md#validation-and-restoration).
+**Status: work in progress, not production-ready.** An isolated checkout saga test passes with a local payment-provider stub. Dependency advisories and failure-recovery gaps remain; a real Razorpay sandbox has not been tested. See [validation and restoration](docs/architecture.md#validation-and-restoration).
 
 ## Services at a glance
 
@@ -76,7 +76,7 @@ Service-local endpoints include `/api/users`, `/api/auth`, `/api/products`, `/ap
 
 ## Validation and limitations
 
-Fresh `dotnet build` succeeded for all seven services, Shared and Gateway with warnings. The User and Notification package downgrade conflicts were resolved in Shared without changing those services; their freshly built images were deployed and passed health checks. All service containers and the gateway reported healthy, and gateway catalog and authenticated cart, order, payment, analytics and notification reads returned HTTP 200 during local validation. Run the seven xUnit projects with `dotnet test .\tests\ECommerce.Tests.slnx`. These tests do not establish end-to-end checkout, live payment or Kafka event processing. Restore reported package vulnerability warnings that require triage; see [validation and restoration](docs/architecture.md#validation-and-restoration).
+Run the seven xUnit projects with `dotnet test .\tests\ECommerce.Tests.slnx`. With Docker Desktop running, `python .\tests\ECommerce.Tests.Integration\run_checkout_saga.py` exercises isolated checkout, Kafka stock reservation, payment confirmation, stock shortage and payment-failure compensation. It uses disposable test data and a local provider stub, not Razorpay itself. User and Notification still report critical/high package advisories, and further retry and recovery testing is required; see [validation and restoration](docs/architecture.md#validation-and-restoration).
 
 ## Author
 

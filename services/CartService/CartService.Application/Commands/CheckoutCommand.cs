@@ -18,7 +18,7 @@ namespace CartService.Application.Commands.Checkout;
 /// boundary already applied to IPaymentGateway/IOrderUnitOfWork elsewhere in this
 /// solution. This handler never needs to know Polly exists.
 /// </summary>
-public sealed record CheckoutCommand(Guid UserId, string IdempotencyKey) : IRequest<CheckoutResult>;
+public sealed record CheckoutCommand(Guid UserId, string IdempotencyKey, string AccessToken) : IRequest<CheckoutResult>;
 
 public sealed class CheckoutCommandHandler(
     IRedisCartRepository cartRepo, IOrderServiceClient orderServiceClient) : IRequestHandler<CheckoutCommand, CheckoutResult>
@@ -30,7 +30,7 @@ public sealed class CheckoutCommandHandler(
             return new CheckoutResult(false, null, "Cart is empty.");
 
         var items = cart.Items.Select(i => new OrderLineForCreation(i.ProductId, i.Name, i.UnitPrice, i.Quantity)).ToList();
-        var result = await orderServiceClient.CreateOrderAsync(cmd.UserId, items, cmd.IdempotencyKey, ct);
+        var result = await orderServiceClient.CreateOrderAsync(cmd.UserId, items, cmd.IdempotencyKey, cmd.AccessToken, ct);
 
         if (!result.Success)
             return new CheckoutResult(false, null, result.Error);

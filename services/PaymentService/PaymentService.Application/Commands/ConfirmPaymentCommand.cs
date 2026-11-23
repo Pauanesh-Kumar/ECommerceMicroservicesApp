@@ -10,7 +10,7 @@ namespace PaymentService.Application.Commands.ConfirmPayment;
 /// <summary>Called from the Razorpay webhook endpoint AFTER signature verification.
 /// This is the ONLY place a Payment transitions to Succeeded/Failed — never trust a
 /// client-side "it worked" callback without this server-to-server confirmation.</summary>
-public sealed record ConfirmPaymentCommand(string ProviderOrderId, string ProviderPaymentId, bool Success, string? FailureReason) : IRequest;
+public sealed record ConfirmPaymentCommand(string EventId, string ProviderOrderId, string ProviderPaymentId, bool Success, string? FailureReason) : IRequest;
 
 public sealed class ConfirmPaymentCommandHandler(
     IPaymentUnitOfWork uow, ILogger<ConfirmPaymentCommandHandler> logger) : IRequestHandler<ConfirmPaymentCommand>
@@ -23,7 +23,7 @@ public sealed class ConfirmPaymentCommandHandler(
         if (payment is null)
         {
             logger.LogWarning("Webhook referenced unknown ProviderOrderId={ProviderOrderId}", cmd.ProviderOrderId);
-            return;
+            throw new InvalidOperationException("Webhook references an unknown provider order.");
         }
 
         if (payment.Status != PaymentStatus.Pending)
@@ -50,8 +50,13 @@ public sealed class ConfirmPaymentCommandHandler(
 
         uow.EnqueueOutboxMessage("payment-status", payment.OrderId.ToString(),
             JsonSerializer.Serialize(new EventEnvelope(eventType, JsonSerializer.Serialize(evt, Json)), Json));
+        uow.RecordInboxEvent(cmd.EventId);
 
-        await uow.TrySaveChangesAsync(ct);
+        if (!await uow.TrySaveChangesAsync(ct))
+        {
+            logger.LogInformation("Webhook event {EventId} was already processed", cmd.EventId);
+            return;
+        }
         logger.LogInformation("Payment {PaymentId} resolved: {EventType}", payment.Id, eventType);
     }
 }

@@ -11,8 +11,7 @@ public sealed class OutboxMessage
     public int Attempts { get; set; }
 }
 
-/// <summary>Inbox for the payment-requested consumer AND the Razorpay webhook (webhook's
-/// `event.id` is inserted here too — Razorpay retries webhooks on non-2xx responses).</summary>
+/// <summary>Inbox for payment-requested events and Razorpay webhook event IDs.</summary>
 public sealed class InboxMessage
 {
     public string EventId { get; init; } = default!;
