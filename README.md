@@ -51,10 +51,10 @@ This diagram describes source-level integration points, not a verified end-to-en
 
 ## Technology and layout
 
-- ASP.NET Core / .NET 10; individual `.slnx` solutions; layered Domain, Application, Infrastructure and API projects.
+- ASP.NET Core / .NET 10; individual `.slnx` solutions; layered Domain, Application, Infrastructure and API projects. APIs run on Kestrel; neither the checkout test tool nor the portfolio generator is needed at runtime.
 - Kafka event consumers and outbox publishers; Redis cart; PostgreSQL and MongoDB persistence.
 - Docker Compose for local infrastructure, YARP gateway, observability packages and Razorpay integration.
-- `services\`: service projects; `shared\ECommerce.Shared\`: shared contracts and infrastructure; `gateway\`: gateway; `docker\`: Compose and initialization assets; `docs\`: architecture and portfolio.
+- `services\`: service projects; `shared\ECommerce.Shared\`: shared contracts and infrastructure; `gateway\`: gateway; `docker\`: Compose and initialization assets; `docs\`: architecture and portfolio; `tools\`: development utilities.
 
 The current Order-to-Payment flow uses Kafka, not gRPC. Razorpay order creation uses its HTTP API, and signed HTTP webhooks report payment events. gRPC may be appropriate for a separate internal synchronous API, but cannot replace the provider's HTTP integration or asynchronous notifications.
 
@@ -83,7 +83,7 @@ Service-local endpoints include `/api/users`, `/api/auth`, `/api/products`, `/ap
 
 ## Validation and limitations
 
-Run the seven xUnit projects with `dotnet test .\tests\ECommerce.Tests.slnx`. With Docker Desktop running, `dotnet test .\tests\ProductService.Infrastructure.Tests\ProductService.Infrastructure.Tests.csproj` runs C# inventory transaction tests on an isolated MongoDB replica set. The existing Python checkout harness (`python .\tests\ECommerce.Tests.Integration\run_checkout_saga.py`) covers broader end-to-end flows and has not yet been replaced by C#. It uses a payment-provider stub, not Razorpay itself. Product's transactional inventory change requires a migration for existing deployments; a background reconciler checks provider orders for uncertain and pending payments, but missing or conflicting results need operator attention. User and Notification retain critical/high package advisories. See [validation and restoration](docs/architecture.md#validation-and-restoration).
+Run the seven xUnit projects with `dotnet test .\tests\ECommerce.Tests.slnx`. With Docker Desktop running, `dotnet test .\tests\ProductService.Infrastructure.Tests\ProductService.Infrastructure.Tests.csproj` runs inventory transaction tests on an isolated MongoDB replica set. Run the broader .NET checkout harness with `dotnet run --project .\tests\ECommerce.Tests.Integration\ECommerce.Tests.Integration.csproj`; it uses disposable infrastructure and a payment-provider stub, not Razorpay itself. Generate the portfolio on Windows x64 with `dotnet run --project .\tools\PortfolioGenerator\PortfolioGenerator.csproj --configuration Release`. Product's transactional inventory change requires a migration for existing deployments; a background reconciler checks provider orders for uncertain and pending payments, but missing or conflicting results need operator attention. User and Notification retain critical/high package advisories. See [validation and restoration](docs/architecture.md#validation-and-restoration).
 
 ## Author
 
