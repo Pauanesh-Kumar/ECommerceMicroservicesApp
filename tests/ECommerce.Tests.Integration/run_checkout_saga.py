@@ -168,6 +168,9 @@ def main():
 			def order_sql(sql):
 				return subprocess.run(compose + ["exec", "-T", "postgres", "psql", "-U", "flowtest", "-d", "orderdb", "-v", "ON_ERROR_STOP=1", "-At", "-c", sql], env=env, check=True, capture_output=True, text=True).stdout.strip()
 
+			def payment_sql(sql):
+				return subprocess.run(compose + ["exec", "-T", "postgres", "psql", "-U", "flowtest", "-d", "paymentdb", "-v", "ON_ERROR_STOP=1", "-At", "-c", sql], env=env, check=True, capture_output=True, text=True).stdout.strip()
+
 			order_sql('CREATE FUNCTION flow_fail_payment_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."Topic" = \'payment-requested\' THEN RAISE EXCEPTION \'injected outbox failure\'; END IF; RETURN NEW; END $$; CREATE TRIGGER flow_fail_payment_outbox BEFORE INSERT ON outbox_messages FOR EACH ROW EXECUTE FUNCTION flow_fail_payment_outbox();')
 			user_id = str(uuid.uuid4())
 			auth = {"Authorization": "Bearer " + token(user_id)}
@@ -299,6 +302,31 @@ def main():
 			assert status == 200 and payment["status"] == 2, f"Payment not failed: {payment}"
 			assert len(Provider.calls) == 2, Provider.calls
 			print("PASS: failed payment cancels order and releases reserved stock")
+
+			status, product = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/", "POST", {"sku": "race-" + uuid.uuid4().hex, "name": "Race test", "description": "test", "category": "test", "price": 10, "currency": "INR", "initialStock": 3}, auth)
+			assert status == 201, f"Race product creation failed: {status} {product}"
+			status, _ = request(f"http://127.0.0.1:{ports['CART']}/api/cart/items", "POST", {"productId": product["productId"], "name": "Race test", "unitPrice": 10, "quantity": 1}, auth)
+			assert status == 200
+			status, checkout = request(f"http://127.0.0.1:{ports['CART']}/api/cart/checkout", "POST", {}, {**auth, "Idempotency-Key": "saga-" + uuid.uuid4().hex})
+			assert status == 200
+			order_id = checkout["orderId"]
+			payment = eventually("pending payment for webhook race", pending_payment)
+			payment_sql('CREATE FUNCTION flow_delay_payment_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(3); RETURN NEW; END $$; CREATE TRIGGER flow_delay_payment_update BEFORE UPDATE ON payments FOR EACH ROW EXECUTE FUNCTION flow_delay_payment_update();')
+			barrier = threading.Barrier(2)
+			responses = []
+			def send_race_webhook(event_type, event_id):
+				body = {"event": event_type, "payload": {"payment": {"entity": {"id": "pay_race", "order_id": payment["providerOrderId"]}}}}
+				signature = hmac.new(WEBHOOK_SECRET.encode(), json.dumps(body, separators=(",", ":")).encode(), hashlib.sha256).hexdigest()
+				barrier.wait(timeout=10)
+				responses.append((event_id, request(f"http://127.0.0.1:{ports['PAYMENT']}/api/payments/webhooks/razorpay", "POST", body, {"X-Razorpay-Signature": signature, "X-Razorpay-Event-Id": event_id})[0]))
+			threads = [threading.Thread(target=send_race_webhook, args=("payment.captured", "race-captured")), threading.Thread(target=send_race_webhook, args=("payment.failed", "race-failed"))]
+			for thread in threads: thread.start()
+			for thread in threads: thread.join(timeout=20)
+			assert not any(thread.is_alive() for thread in threads) and sorted(code for _, code in responses) == [200, 500], responses
+			assert payment_sql(f'SELECT count(*) FROM outbox_messages WHERE "Key" = \'{order_id}\' AND "Topic" = \'payment-status\'') == "1", "Conflicting payment outcomes were published"
+			assert payment_sql('SELECT count(*) FROM inbox_messages WHERE "EventId" IN (\'race-captured\', \'race-failed\')') == "1", "Both webhook inbox entries committed"
+			assert "DbUpdateConcurrencyException" in (Path(temp) / "Payment.log").read_text(encoding="utf-8"), "Concurrent update did not exercise the concurrency guard"
+			print("PASS: concurrent conflicting webhooks produce one payment outcome and a retryable conflict")
 	except Exception:
 		if started:
 			subprocess.run(compose + ["logs", "--tail", "30", "kafka"], env=env, check=False)

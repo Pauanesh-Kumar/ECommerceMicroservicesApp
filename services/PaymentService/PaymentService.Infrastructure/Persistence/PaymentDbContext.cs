@@ -16,7 +16,7 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options)
             b.ToTable("payments");
             b.HasKey(p => p.Id);
             b.Property(p => p.Amount).HasColumnType("numeric(18,2)");
-            b.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
+            b.Property(p => p.Status).HasConversion<string>().HasMaxLength(20).IsConcurrencyToken();
             b.Property(p => p.Currency).HasMaxLength(3);
 
             // THE idempotency guard: at most one Payment row per Order, enforced at the

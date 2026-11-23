@@ -28,7 +28,16 @@ public sealed class ConfirmPaymentCommandHandler(
 
         if (payment.Status != PaymentStatus.Pending)
         {
-            logger.LogInformation("Payment {PaymentId} already resolved (Status={Status}) — webhook is a duplicate, ignoring", payment.Id, payment.Status);
+            var matches = cmd.Success
+                ? payment.Status == PaymentStatus.Succeeded && payment.ProviderPaymentId == cmd.ProviderPaymentId
+                : payment.Status == PaymentStatus.Failed;
+            if (!matches)
+            {
+                logger.LogError("Conflicting webhook {EventId} for payment {PaymentId} in status {Status}; reconciliation required", cmd.EventId, payment.Id, payment.Status);
+                throw new InvalidOperationException("Webhook conflicts with the resolved payment; reconciliation is required.");
+            }
+
+            logger.LogInformation("Payment {PaymentId} already resolved (Status={Status}) — matching webhook ignored", payment.Id, payment.Status);
             return;
         }
 

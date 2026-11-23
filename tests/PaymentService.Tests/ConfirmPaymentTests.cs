@@ -52,6 +52,25 @@ public class ConfirmPaymentTests
         Assert.Equal(0, uow.Saves);
     }
 
+    [Theory]
+    [InlineData(true, false, "provider-payment")]
+    [InlineData(false, true, "provider-payment")]
+    [InlineData(true, true, "other-payment")]
+    public async Task ConflictingTerminalWebhookRequiresReconciliation(bool initiallySucceeded, bool incomingSucceeded, string incomingPaymentId)
+    {
+        var payment = Payment.CreatePending(Guid.NewGuid(), Guid.NewGuid(), 25m, "INR", "provider-order");
+        if (initiallySucceeded) payment.MarkSucceeded("provider-payment");
+        else payment.MarkFailed("declined");
+        var uow = new FakeUnitOfWork(payment);
+        var handler = new ConfirmPaymentCommandHandler(uow, NullLogger<ConfirmPaymentCommandHandler>.Instance);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => handler.Handle(new("event-conflict", "provider-order", incomingPaymentId, incomingSucceeded, null), default));
+
+        Assert.Equal(0, uow.Saves);
+        Assert.Null(uow.Topic);
+        Assert.Null(uow.InboxId);
+    }
+
     private sealed class FakeUnitOfWork(Payment? payment) : IPaymentUnitOfWork
     {
         public string? InboxId { get; private set; }
