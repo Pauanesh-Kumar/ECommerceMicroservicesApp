@@ -13,7 +13,7 @@ namespace ProductService.Infrastructure.Persistence;
 /// InfrastructureServiceExtensions so it always runs.
 /// </summary>
 public sealed class ProductIndexInitializer(
-    IMongoDatabase database, InboxStore inboxStore, ILogger<ProductIndexInitializer> logger) : IHostedService
+    IMongoDatabase database, ILogger<ProductIndexInitializer> logger) : IHostedService
 {
     public async Task StartAsync(CancellationToken ct)
     {
@@ -27,8 +27,7 @@ public sealed class ProductIndexInitializer(
             new CreateIndexModel<Product>(Builders<Product>.IndexKeys.Ascending(p => p.Category))
         ], ct);
 
-        await inboxStore.EnsureIndexesAsync(ct);
-        logger.LogInformation("[ProductService] Indexes ensured (products cursor+sku+category, inbox eventId).");
+        logger.LogInformation("[ProductService] Product indexes ensured (cursor+sku+category).");
     }
 
     public Task StopAsync(CancellationToken ct) => Task.CompletedTask;

@@ -75,7 +75,7 @@ def cover():
 	card(d, (820, 425, 1520, 600), "Event-driven integration", "Kafka consumers and transactional outbox code connect the order and payment workflows.")
 	card(d, (80, 625, 780, 800), "Data & delivery", "PostgreSQL, MongoDB and Redis; Docker Compose, YARP and observability tooling.")
 	card(d, (820, 625, 1520, 800), "Insights & engagement", "Notification and analytics consumers, with a timed reporting projection.")
-	d.text((80, 849), "WORK IN PROGRESS  |  Build and end-to-end verification remain incomplete.", font=font(24, True), fill=GOLD)
+	d.text((80, 849), "WORK IN PROGRESS  |  End-to-end verification remains incomplete.", font=font(24, True), fill=GOLD)
 	return image
 
 
@@ -101,7 +101,7 @@ def delivery():
 	paragraph(d, "A practical engineering portfolio focused on system design and implementation evidence.", 80, 235, 1360, size=31)
 	card(d, (80, 350, 780, 560), "Current implementation", "Layered ASP.NET Core services, YARP routing, Kafka consumers, outbox publishers and a Razorpay integration.")
 	card(d, (820, 350, 1520, 560), "Infrastructure", "Compose describes the services and supporting databases, cache, messaging and monitoring tools.")
-	card(d, (80, 595, 780, 805), "Verification status", "Two services fail fresh restore; containers and end-to-end flows have not been verified.", GOLD)
+	card(d, (80, 595, 780, 805), "Verification status", "All solutions build with warnings; local health checks pass. End-to-end flows remain unverified.", GOLD)
 	card(d, (820, 595, 1520, 805), "Next engineering work", "Resolve dependency issues, secure configuration, then add integration and failure-path tests.", GOLD)
 	d.text((80, 849), "PROJECT: GITHUB.COM/PAUANESH-KUMAR/ECOMMERCEMICROSERVICESAPP", font=font(22, True), fill=ACCENT)
 	return image

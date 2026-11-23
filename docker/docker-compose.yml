@@ -106,7 +106,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_PRODUCT_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PRODUCT_PASS}
       MONGO_INITDB_DATABASE:      ${MONGO_PRODUCT_DB}
-      MONGO_NOTIF_DB:             ${MONGO_PRODUCT_DB}
+      MONGO_PRODUCT_DB:           ${MONGO_PRODUCT_DB}
       MONGO_PRODUCT_APP_USER:       ${MONGO_PRODUCT_APP_USER}
       MONGO_PRODUCT_APP_PASSWORD:   ${MONGO_PRODUCT_APP_PASSWORD}
       MONGO_PRODUCT_COLLECTION_NAME: ${MONGO_PRODUCT_COLLECTION_NAME}
@@ -271,6 +271,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
+        set -e
         echo 'Creating Kafka topics...'
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic user-updated              --partitions 3 --replication-factor 1
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic product-stock-changed     --partitions 3 --replication-factor 1
@@ -482,6 +483,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:${PRODUCTSERVICE_HOST_PORT}/health/live || exit 1"]
       interval: 20s
@@ -557,6 +560,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:${ORDERSERVICE_HOST_PORT}/health/live || exit 1"]
       interval: 20s
@@ -597,6 +602,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:${PAYMENTSERVICE_HOST_PORT}/health/live || exit 1"]
       interval: 20s
@@ -638,6 +645,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:${ANALYTICSSERVICE_HOST_PORT}/health/live || exit 1"]
       interval: 20s

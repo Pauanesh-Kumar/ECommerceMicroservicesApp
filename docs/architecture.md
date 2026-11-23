@@ -1,6 +1,6 @@
 # Architecture, service review and restoration
 
-This document records the checked-in source and the local validation performed on 22 November 2026. Intended architecture and code paths are not proof of working integration or production readiness.
+This document records the local source and validation. Intended architecture and code paths are not proof of working integration or production readiness.
 
 ## System context
 
@@ -32,8 +32,8 @@ The gateway reads YARP routes from configuration. Its native aggregator calls do
 
 | Component | Source evidence | Build check |
 | --- | --- | --- |
-| User | `UserEndpoints.cs`: registration, login and user management; API includes GraphQL and gRPC registration. | Fresh restore fails: logging and OpenTelemetry package downgrades. |
-| Notification | Notification endpoints and user/order/payment Kafka consumers; direct send endpoint is commented out. | Fresh restore fails: OpenTelemetry package downgrade. |
+| User | `UserEndpoints.cs`: registration, login and user management; API includes GraphQL and gRPC registration. | Passed, warnings. |
+| Notification | Notification endpoints and user/order/payment Kafka consumers; direct send endpoint is commented out. | Passed, warnings. |
 | Product | Catalog read/create endpoints, MongoDB repository, order-event consumer and product publisher. | Passed, warnings. |
 | Cart | Redis cart repository, HTTP order client and checkout endpoint. Checkout generates an idempotency key when absent, so a client must send a stable key for retries. | Passed, warnings. |
 | Order | PostgreSQL repository, idempotency record, outbox and saga consumer. `CreateOrderCommand` saves order, idempotency and outbox together. | Passed, warnings. |
@@ -55,29 +55,31 @@ Event schemas, routing, retries, duplicate handling, authorization and behavior 
 
 ## Data and deployment
 
-Order and Payment configure Npgsql contexts; Product and Analytics configure MongoDB; Cart configures Redis. Analytics additionally expects an `AnalyticsReportingDb` connection for its reporting projection. The Compose file defines PostgreSQL, MongoDB, Redis, Kafka, service containers, a gateway and observability tools. `docker compose ... config --quiet` passed locally using the existing local configuration; Docker Desktop's engine was unavailable, so container startup and health were not verified. Do not print resolved Compose configuration in shared logs because it can contain secrets.
+Order and Payment configure Npgsql contexts; Product and Analytics configure MongoDB; Cart configures Redis. Analytics additionally expects an `AnalyticsReportingDb` connection for its reporting projection. The Compose file defines PostgreSQL, MongoDB, Redis, Kafka, service containers, a gateway and observability tools. Order and Payment apply their EF migrations on startup in Development; other environments require a reviewed explicit migration step. Do not print resolved Compose configuration in shared logs because it can contain secrets.
 
 ## Validation and restoration
 
-### Baseline on 22 November 2026
+### Local validation
 
 - Installed SDK: `11.0.100`; projects target .NET 10.
-- A fresh `dotnet build` passed Shared, Product, Cart, Order, Payment, Analytics and Gateway, with warnings. Earlier User and Notification `--no-restore` builds used cached assets and did not establish that fresh restores worked.
-- Product, Cart and Payment instrumentation references were aligned with Shared; the unavailable Shared EF instrumentation version was replaced with the version NuGet had resolved. Cart endpoint injection now uses the registered repository interface. Analytics project references and its configuration-binding dependency were corrected.
-- User fresh restore fails with `NU1605` for logging and OpenTelemetry; Notification fresh restore fails with `NU1605` for OpenTelemetry. Both services remain unchanged under the project constraint. Resolve these conflicts with owner approval before claiming a clean full build.
-- No tracked migration directories were found for Order, Payment or Analytics. Order and Payment call EF migration APIs, but an applied schema or reproducible migration baseline was not verified. Analytics reporting also contains SQL schema creation in its hosted service.
-- No tracked test project files were found in `tests`; no automated or live integration tests were run. Docker engine was unavailable.
+- A fresh `dotnet build` passed all seven services, Shared and Gateway, with warnings.
+- Shared no longer references unused EF Core and EF instrumentation packages or redundant Microsoft.Extensions packages supplied by the ASP.NET Core framework. Its ASP.NET Core OpenTelemetry instrumentation was aligned with User and Notification, resolving their `NU1605` conflicts without suppressing errors or modifying those services. Cart endpoint injection now uses the registered repository interface. Analytics project references and its configuration-binding dependency were corrected.
+- Added Order and Payment EF initial migrations and verified them against the previously empty local databases. Analytics reporting creates its reporting schema in a hosted service; no Analytics EF migration was added.
+- Fresh User and Notification images were built, checked in temporary containers, and deployed. Their health checks passed, as did the gateway's `/health`; all seven service containers and the gateway reported healthy. Product catalog and authenticated cart, order, payment, analytics and notification reads returned HTTP 200 through the gateway during local validation. The authenticated reads preceded the final User and Notification replacement.
+- The Kafka initialization job was run to create missing saga topics. Missing Product and Analytics MongoDB application users were created in existing local volumes using their configured credentials; no existing users were modified. Product initialization now receives the correct database setting. Mongo initialization scripts run only on a fresh volume; preexisting volumes require a manual, non-destructive user check.
+- Analytics driver/BSON versions were aligned after a runtime assembly error. Product now relies on MongoDB's automatically unique `_id` inbox index. Shared Redis registration accepts the existing `Redis:ConnectionString` key and registers the expected interface.
+- No tracked test project files were found in `tests`. Health and read checks do not prove checkout, Kafka saga, payment provider or recovery behavior; those flows were not exercised end to end.
 
 ### Resume after a Visual Studio restart
 
 1. Open the repository folder and inspect `git status --short --branch`; preserve unrelated local modifications. Each service has its own `.slnx`. The historical `STEP_BY_STEP_GUIDE.md` references older structure and should not be treated as authoritative.
 2. **Before public push**, inspect current files *and all reachable Git history* for credentials, archives, backups and sensitive data. The local history includes tracked `.env` files, backup env files, settings files and an archive containing an `.env`. Ignoring a file does not untrack it or remove it from earlier commits. Assume any real credentials in such files require rotation; follow the owner's approved history-sanitization plan. Do not publish this history as-is.
 3. Replace committed secrets with protected local configuration and provide a non-secret example configuration only after reviewing all required settings. Ensure every service and Compose receives the correct settings without printing them in logs. The gateway explicitly requires `appsettings.json`, so removing settings requires a deliberate safe replacement.
-4. With owner approval, resolve User and Notification package downgrades without suppressing restore errors. Review NU1603 and security advisory warnings, restore all solutions and rebuild. Current project instructions prohibit modifying User and Notification.
-5. Start Docker Desktop; validate Compose with `docker compose -f .\docker\docker-compose.yml config --quiet`. Provision local dependencies and databases using reviewed, non-production credentials. Verify migration paths, topic creation, addresses and service configuration; syntax validation alone does not establish operational correctness.
-6. Build each individual `.slnx`, then add and run meaningful unit, integration and failure/retry tests. Verify each service's health endpoint, authorization, checkout/idempotency behavior, Kafka event flows, payment webhook and analytics projection against isolated infrastructure.
+4. Review NU1603 and security advisory warnings, restore all solutions and rebuild. Current project instructions prohibit modifying User and Notification. The package downgrade fix is in `shared\ECommerce.Shared\ECommerce.Shared.csproj`.
+5. Start Docker Desktop; validate Compose with `docker compose -f .\docker\docker-compose.yml config --quiet`. For an existing installation, run `docker compose -f .\docker\docker-compose.yml run --rm --no-deps kafka-init` to create missing topics without deleting existing ones. Inspect existing databases and back up data before applying migrations; never recreate or remove volumes merely to rerun Mongo initialization.
+6. Build each individual `.slnx`, then add and run meaningful unit, integration and failure/retry tests. Verify each service's health endpoint, authorization, checkout/idempotency behavior, Kafka event flows, payment webhook and analytics projection against isolated infrastructure. Liveness does not check all external dependencies.
 7. Generate the portfolio assets from the repository root with `python .\docs\generate_portfolio.py` (requires Pillow and Windows Segoe UI fonts). Open the PNG, GIF, PDF and HTML and verify their content after changing project status.
-8. Once history is demonstrably safe, authenticate to GitHub and push only an owner-approved branch. Do not rewrite existing history without explicit approval; the public repository was empty at the time of this review.
+8. Public `main` has a separate sanitized history; local `master` retains sensitive history and must not be pushed. Publish future fixes as commits on the sanitized history, after scanning the content and reachable history.
 
 ## Portfolio materials
 

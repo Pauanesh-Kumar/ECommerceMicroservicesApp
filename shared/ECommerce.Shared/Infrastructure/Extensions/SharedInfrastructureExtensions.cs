@@ -59,11 +59,10 @@ public static class SharedInfrastructureExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var redisConnection = configuration["Redis:Connection"]
-            ?? throw new InvalidOperationException("Redis:Connection not configured");
+        var redisConnection = configuration["Redis:Connection"] ?? configuration["Redis:ConnectionString"]
+            ?? throw new InvalidOperationException("Redis:Connection or Redis:ConnectionString must be configured");
 
-        var redis = ConnectionMultiplexer.Connect(redisConnection);
-        services.AddSingleton(redis);
+        services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnection));
         services.AddScoped<IIdempotencyStore, RedisIdempotencyStore>();
         return services;
     }

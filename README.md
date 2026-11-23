@@ -4,7 +4,7 @@ A .NET 10 backend portfolio project exploring a distributed commerce system with
 
 **Portfolio:** [PNG overview](docs/freelancer-portfolio.png) | [Animated GIF](docs/freelancer-portfolio.gif) | [PDF case study](docs/freelancer-portfolio.pdf) | [Web case study](docs/freelancer-portfolio.html) | [Architecture](docs/architecture.md)
 
-**Status: work in progress, not production-ready.** Product, Cart, Order, Payment, Analytics, Shared and Gateway build; fresh restores of User and Notification report dependency downgrades. The end-to-end system has not been verified. See [validation and restoration](docs/architecture.md#validation-and-restoration). No runtime or deployment success is implied by the diagrams or portfolio assets.
+**Status: work in progress, not production-ready.** All service solutions, Shared and Gateway build with warnings, and the local service containers and gateway have reported healthy. End-to-end flows have not been verified. See [validation and restoration](docs/architecture.md#validation-and-restoration).
 
 ## Services at a glance
 
@@ -55,14 +55,14 @@ This diagram describes source-level integration points, not a verified end-to-en
 
 1. Install the .NET 10 SDK and Docker Desktop. Start Docker before attempting Compose commands.
 2. Provision your own development configuration and credentials outside source control. The local Git history contains tracked environment/backup files and settings that must be reviewed and sanitized before publishing; `.gitignore` does not remove tracked files or history. Do not copy their values into documentation or public GitHub.
-3. Review [restoration instructions and known build blockers](docs/architecture.md#validation-and-restoration). The older `STEP_BY_STEP_GUIDE.md` is historical and does not reliably match the current project layout.
+3. Review [restoration instructions and known limitations](docs/architecture.md#validation-and-restoration). The older `STEP_BY_STEP_GUIDE.md` is historical and does not reliably match the current project layout.
 4. Check Compose configuration without displaying resolved secrets:
 
    ```powershell
    docker compose -f .\docker\docker-compose.yml config --quiet
    ```
 
-5. After resolving the documented build issues and configuring dependencies, build an individual solution, for example:
+5. After configuring dependencies, build an individual solution, for example:
 
    ```powershell
    dotnet build .\services\OrderService\OrderService.slnx
@@ -76,7 +76,7 @@ Service-local endpoints include `/api/users`, `/api/auth`, `/api/products`, `/ap
 
 ## Validation and limitations
 
-On 22 November 2026, a fresh `dotnet build` succeeded for Shared, Product, Cart, Order, Payment, Analytics and Gateway with warnings. User and Notification failed restore due to package downgrades; those services were left unchanged under the project constraint. Earlier no-restore successes used cached assets and did not verify fresh restores. The local Docker daemon was unavailable, so no services, health checks or end-to-end flows were run. The test directories contained no test project files. Restore also reported package vulnerability warnings that require triage.
+Fresh `dotnet build` succeeded for all seven services, Shared and Gateway with warnings. The User and Notification package downgrade conflicts were resolved in Shared without changing those services; their freshly built images were deployed and passed health checks. All service containers and the gateway reported healthy, and gateway catalog and authenticated cart, order, payment, analytics and notification reads returned HTTP 200 during local validation. This did not test checkout, live payment or end-to-end event processing. Restore reported package vulnerability warnings that require triage; see [validation and restoration](docs/architecture.md#validation-and-restoration).
 
 ## Author
 
