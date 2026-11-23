@@ -372,3 +372,5 @@ secrets.json
 !.env.example
 **/appsettings.Development.json
 *_backup*
+*.env_bkp
+/docker/files.zip

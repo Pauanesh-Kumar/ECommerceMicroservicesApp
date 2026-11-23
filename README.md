@@ -76,7 +76,7 @@ Service-local endpoints include `/api/users`, `/api/auth`, `/api/products`, `/ap
 
 ## Validation and limitations
 
-Fresh `dotnet build` succeeded for all seven services, Shared and Gateway with warnings. The User and Notification package downgrade conflicts were resolved in Shared without changing those services; their freshly built images were deployed and passed health checks. All service containers and the gateway reported healthy, and gateway catalog and authenticated cart, order, payment, analytics and notification reads returned HTTP 200 during local validation. This did not test checkout, live payment or end-to-end event processing. Restore reported package vulnerability warnings that require triage; see [validation and restoration](docs/architecture.md#validation-and-restoration).
+Fresh `dotnet build` succeeded for all seven services, Shared and Gateway with warnings. The User and Notification package downgrade conflicts were resolved in Shared without changing those services; their freshly built images were deployed and passed health checks. All service containers and the gateway reported healthy, and gateway catalog and authenticated cart, order, payment, analytics and notification reads returned HTTP 200 during local validation. Run the seven xUnit projects with `dotnet test .\tests\ECommerce.Tests.slnx`. These tests do not establish end-to-end checkout, live payment or Kafka event processing. Restore reported package vulnerability warnings that require triage; see [validation and restoration](docs/architecture.md#validation-and-restoration).
 
 ## Author
 

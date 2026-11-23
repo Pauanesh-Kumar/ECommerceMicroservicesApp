@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="../../shared/ECommerce.Shared/ECommerce.Shared.csproj" />
+  <Project Path="../../tests/PaymentService.Tests/PaymentService.Tests.csproj" />
   <Project Path="PaymentService.API/PaymentService.API.csproj" />
   <Project Path="PaymentService.Application/PaymentService.Application.csproj" />
   <Project Path="PaymentService.Domain/PaymentService.Domain.csproj" />
