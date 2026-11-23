@@ -42,8 +42,9 @@ public static class InfrastructureServiceExtensions
                 EnableIdempotence = true
             }).Build());
 
-        services.AddSingleton<IProductEventPublisher, ProductEventPublisher>();
+        services.AddScoped<TransactionalInventoryProcessor>();
         services.AddHostedService<OrderEventConsumerService>();
+        services.AddHostedService<InventoryOutboxHostedService>();
 
         return services;
     }

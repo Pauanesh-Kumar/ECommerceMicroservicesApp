@@ -8,26 +8,40 @@ namespace PaymentService.Tests;
 
 public class ConfirmPaymentTests
 {
-    [Theory]
-    [InlineData(true, PaymentStatus.Succeeded, "PaymentProcessed")]
-    [InlineData(false, PaymentStatus.Failed, "PaymentFailed")]
-    public async Task RecordsWebhookAndOutboxWithPaymentInSingleSave(bool success, PaymentStatus expectedStatus, string expectedEvent)
+    [Fact]
+    public async Task RecordsCapturedWebhookAndOutboxWithPaymentInSingleSave()
     {
         var payment = Payment.CreatePending(Guid.NewGuid(), Guid.NewGuid(), 25m, "INR", "provider-order");
         var uow = new FakeUnitOfWork(payment);
         var handler = new ConfirmPaymentCommandHandler(uow, NullLogger<ConfirmPaymentCommandHandler>.Instance);
 
-        await handler.Handle(new("event-123", "provider-order", "provider-payment", success, "declined"), default);
+        await handler.Handle(new("event-123", "provider-order", "provider-payment", true, null), default);
 
-        Assert.Equal(expectedStatus, payment.Status);
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
         Assert.Equal("event-123", uow.InboxId);
         Assert.Equal("payment-status", uow.Topic);
         Assert.Equal(payment.OrderId.ToString(), uow.Key);
         Assert.Equal(1, uow.Saves);
         using var envelope = JsonDocument.Parse(Assert.IsType<string>(uow.Payload));
-        Assert.Equal(expectedEvent, envelope.RootElement.GetProperty("eventType").GetString());
+        Assert.Equal("PaymentProcessed", envelope.RootElement.GetProperty("eventType").GetString());
         using var eventPayload = JsonDocument.Parse(envelope.RootElement.GetProperty("payload").GetString()!);
         Assert.Equal(payment.OrderId, eventPayload.RootElement.GetProperty("orderId").GetGuid());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedAttemptDoesNotResolveOrCancelOrder(bool alreadySucceeded)
+    {
+        var payment = Payment.CreatePending(Guid.NewGuid(), Guid.NewGuid(), 25m, "INR", "provider-order");
+        if (alreadySucceeded) payment.MarkSucceeded("captured-payment");
+        var uow = new FakeUnitOfWork(payment);
+        var handler = new ConfirmPaymentCommandHandler(uow, NullLogger<ConfirmPaymentCommandHandler>.Instance);
+        await handler.Handle(new("failed-attempt", "provider-order", "failed-payment", false, "declined"), default);
+        Assert.Equal(alreadySucceeded ? PaymentStatus.Succeeded : PaymentStatus.Pending, payment.Status);
+        Assert.Equal("failed-attempt", uow.InboxId);
+        Assert.Null(uow.Topic);
+        Assert.Equal(1, uow.Saves);
     }
 
     [Fact]
@@ -53,7 +67,6 @@ public class ConfirmPaymentTests
     }
 
     [Theory]
-    [InlineData(true, false, "provider-payment")]
     [InlineData(false, true, "provider-payment")]
     [InlineData(true, true, "other-payment")]
     public async Task ConflictingTerminalWebhookRequiresReconciliation(bool initiallySucceeded, bool incomingSucceeded, string incomingPaymentId)

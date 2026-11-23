@@ -74,7 +74,7 @@ def cover():
 	card(d, (80, 425, 780, 600), "Commerce services", "User, product, cart, order and payment APIs divide responsibilities across independent projects.")
 	card(d, (820, 425, 1520, 600), "Event-driven integration", "Kafka consumers and transactional outbox code connect the order and payment workflows.")
 	card(d, (80, 625, 780, 800), "Data & delivery", "PostgreSQL, MongoDB and Redis; Docker Compose, YARP and observability tooling.")
-	card(d, (820, 625, 1520, 800), "Insights & engagement", "Notification and analytics consumers, with a timed reporting projection.")
+	card(d, (820, 625, 1520, 800), "Recovery design", "Transactional inventory and payment reconciliation implemented and tested in isolation.")
 	d.text((80, 849), "ISOLATED FLOWS TESTED  |  NOT PRODUCTION-READY", font=font(24, True), fill=GOLD)
 	return image
 
@@ -90,9 +90,9 @@ def architecture():
 		d.text((x + 22, 424), label, font=font(25, True), fill=TEXT)
 		if i < len(labels) - 1:
 			d.line((x + 325, 430, x + 357, 430), fill=MUTED, width=4)
-	card(d, (80, 570, 780, 760), "Order consistency", "The order handler saves the order, an idempotency record and an outbox message together.")
-	card(d, (820, 570, 1520, 760), "Data ownership", "Cart uses Redis; product and analytics use MongoDB; order and payment use PostgreSQL.")
-	d.text((80, 835), "Order retry and Analytics deduplication tested; recovery gaps remain.", font=font(23, True), fill=GOLD)
+	card(d, (80, 570, 780, 760), "Inventory consistency", "MongoDB transactions combine reservation, inbox and outbox changes; delivery is at least once.")
+	card(d, (820, 570, 1520, 760), "Payment recovery", "Durable payment intent, signed webhooks and provider reconciliation handle uncertain outcomes.")
+	d.text((80, 835), "Replica-set migration and real payment sandbox validation remain.", font=font(23, True), fill=GOLD)
 	return image
 
 
@@ -102,7 +102,7 @@ def delivery():
 	card(d, (80, 350, 780, 560), "Current implementation", "Layered ASP.NET Core services, YARP routing, Kafka consumers, outbox publishers and a Razorpay integration.")
 	card(d, (820, 350, 1520, 560), "Infrastructure", "Compose describes the services and supporting databases, cache, messaging and monitoring tools.")
 	card(d, (80, 595, 780, 805), "Verification status", "xUnit and isolated checkout, compensation, retry and duplicate-delivery tests. Payment provider is a stub.", GOLD)
-	card(d, (820, 595, 1520, 805), "Next engineering work", "Complete crash-safe stock and payment processing, dependency remediation and real sandbox tests.", GOLD)
+	card(d, (820, 595, 1520, 805), "Next engineering work", "Migrate Product MongoDB, deploy updated services, remediate advisories and test a real sandbox.", GOLD)
 	d.text((80, 849), "PROJECT: GITHUB.COM/PAUANESH-KUMAR/ECOMMERCEMICROSERVICESAPP", font=font(22, True), fill=ACCENT)
 	return image
 

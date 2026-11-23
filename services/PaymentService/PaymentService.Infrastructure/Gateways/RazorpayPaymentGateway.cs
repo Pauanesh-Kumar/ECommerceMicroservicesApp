@@ -43,39 +43,36 @@ public sealed class RazorpayPaymentGateway : IPaymentGateway
 
         try
         {
-            var response = await _http.PostAsJsonAsync("orders", payload, ct);
+            using var response = await _http.PostAsJsonAsync("orders", payload, ct);
             if (!response.IsSuccessStatusCode)
             {
-                var body = await response.Content.ReadAsStringAsync(ct);
-                _logger.LogWarning("Razorpay CreateOrder failed {Status}: {Body}", response.StatusCode, body);
-                return new GatewayOrderResult(false, null, $"Razorpay error {(int)response.StatusCode}: {body}");
+                _logger.LogWarning("Razorpay CreateOrder returned {Status} for internalOrderId={OrderId}", response.StatusCode, internalOrderId);
+                return new GatewayOrderResult(false, null, $"Razorpay error {(int)response.StatusCode}");
             }
 
             var json = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
             var providerOrderId = json.GetProperty("id").GetString();
             return new GatewayOrderResult(true, providerOrderId, null);
         }
-        // ── Circuit is open: Razorpay has already failed/timed-out enough recent calls
-        // that we're not even attempting the request. This is caught here — not in
-        // ProcessPaymentCommandHandler — because Polly/resilience types are an
-        // Infrastructure concern; the Application layer only ever sees a plain
-        // GatewayOrderResult, same DIP boundary as everywhere else in this solution.
-        // The caller (ProcessPaymentCommandHandler) will publish PaymentFailed on this
-        // path exactly like any other gateway failure — no special-casing needed there.
         catch (BrokenCircuitException ex)
         {
-            _logger.LogWarning(ex, "Razorpay circuit is open — failing fast for internalOrderId={OrderId}", internalOrderId);
+            _logger.LogWarning(ex, "Razorpay circuit is open for internalOrderId={OrderId}", internalOrderId);
             return new GatewayOrderResult(false, null, "Payment gateway is temporarily unavailable.");
         }
         catch (TimeoutRejectedException ex)
         {
-            _logger.LogWarning(ex, "Razorpay call timed out (all retries exhausted) for internalOrderId={OrderId}", internalOrderId);
+            _logger.LogWarning(ex, "Razorpay call timed out for internalOrderId={OrderId}", internalOrderId);
             return new GatewayOrderResult(false, null, "Payment gateway did not respond in time.");
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "Razorpay CreateOrder threw for internalOrderId={OrderId}", internalOrderId);
-            return new GatewayOrderResult(false, null, ex.Message);
+            _logger.LogWarning(ex, "Razorpay connection failed for internalOrderId={OrderId}", internalOrderId);
+            return new GatewayOrderResult(false, null, "Payment gateway connection failed.");
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Razorpay call timed out for internalOrderId={OrderId}", internalOrderId);
+            return new GatewayOrderResult(false, null, "Payment gateway did not respond in time.");
         }
     }
 

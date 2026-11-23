@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -74,6 +75,28 @@ def eventually(description, action, timeout=90):
 
 class Provider(BaseHTTPRequestHandler):
 	calls = []
+	orders = {}
+	pause_next = False
+	entered = threading.Event()
+	release = threading.Event()
+
+	def do_GET(self):
+		query = urllib.parse.urlparse(self.path)
+		if query.path == "/v1/orders":
+			receipt = urllib.parse.parse_qs(query.query).get("receipt", [""])[0]
+			items = [order for order in self.orders.values() if receipt in order["receipt"]]
+		elif query.path.startswith("/v1/orders/") and query.path.endswith("/payments"):
+			provider_id = query.path.split("/")[3]
+			items = [payment for order in self.orders.values() if order["id"] == provider_id for payment in order.get("payments", [])]
+		else:
+			self.send_error(404)
+			return
+		payload = json.dumps({"items": items}).encode()
+		self.send_response(200)
+		self.send_header("Content-Type", "application/json")
+		self.send_header("Content-Length", str(len(payload)))
+		self.end_headers()
+		self.wfile.write(payload)
 
 	def do_POST(self):
 		if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
@@ -94,12 +117,21 @@ class Provider(BaseHTTPRequestHandler):
 		if self.path != "/v1/orders":
 			self.send_error(404)
 			return
+		Provider.orders[body["receipt"]] = {"id": "order_test_" + body["receipt"].replace("-", ""), "receipt": body["receipt"], "amount": body["amount"], "currency": body["currency"], "status": "created"}
+		if Provider.pause_next:
+			Provider.pause_next = False
+			Provider.entered.set()
+			if not Provider.release.wait(timeout=30):
+				raise TimeoutError("Test did not release provider response")
 		payload = json.dumps({"id": "order_test_" + body["receipt"].replace("-", "")}).encode()
-		self.send_response(200)
-		self.send_header("Content-Type", "application/json")
-		self.send_header("Content-Length", str(len(payload)))
-		self.end_headers()
-		self.wfile.write(payload)
+		try:
+			self.send_response(200)
+			self.send_header("Content-Type", "application/json")
+			self.send_header("Content-Length", str(len(payload)))
+			self.end_headers()
+			self.wfile.write(payload)
+		except (BrokenPipeError, ConnectionResetError):
+			pass
 
 	def log_message(self, format, *args):
 		pass
@@ -129,6 +161,8 @@ def main():
 			subprocess.run(["dotnet", "build", str(project_file), "--nologo", "-v", "quiet"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
 		started = True
 		subprocess.run(compose + ["up", "-d", "--wait", "--wait-timeout", "180"], env=env, check=True)
+		subprocess.run(compose + ["exec", "-T", "mongo", "mongosh", "--quiet", "--eval", 'rs.initiate({_id: "flow-rs", members: [{_id: 0, host: "localhost:27017"}]})'], env=env, check=True, capture_output=True, text=True)
+		eventually("MongoDB replica-set primary", lambda: "true" in subprocess.run(compose + ["exec", "-T", "mongo", "mongosh", "--quiet", "--eval", 'print(db.hello().isWritablePrimary)'], env=env, check=True, capture_output=True, text=True).stdout)
 		for database in ("orderdb", "paymentdb", "analyticsdb"):
 			subprocess.run(compose + ["exec", "-T", "postgres", "createdb", "-U", "flowtest", database], env=env, check=True)
 		for topic in ("order-created", "stock-release", "product-stock", "payment-requested", "payment-status", "order-confirmed", "order-cancelled"):
@@ -150,6 +184,9 @@ def main():
 			"Payment": {"ConnectionStrings__PaymentServiceDb": f"Host=127.0.0.1;Port={ports['POSTGRES']};Database=paymentdb;Username=flowtest;Password=local-test-only", "Razorpay__BaseUrl": f"http://127.0.0.1:{provider.server_port}/v1", "Razorpay__KeyId": "test-key", "Razorpay__KeySecret": "test-key-secret", "Razorpay__WebhookSecret": WEBHOOK_SECRET},
 			"Analytics": {"ConnectionStrings__AnalyticsServiceDb": f"mongodb://127.0.0.1:{ports['MONGO']}", "ConnectionStrings__AnalyticsReportingDb": f"Host=127.0.0.1;Port={ports['POSTGRES']};Database=analyticsdb;Username=flowtest;Password=local-test-only"},
 		}
+		settings["Payment"].update({"PaymentReconciliation__IntervalSeconds": "2", "PaymentReconciliation__MinimumAgeSeconds": "30"})
+		settings["Product"]["ConnectionStrings__ProductServiceDb"] += "?directConnection=true"
+		settings["Analytics"]["ConnectionStrings__AnalyticsServiceDb"] += "?directConnection=true"
 		with contextlib.nullcontext(test_directory.name) as temp:
 			for service in ("Product", "Order", "Payment", "Cart", "Analytics"):
 				service_env = env.copy()
@@ -171,6 +208,9 @@ def main():
 			def payment_sql(sql):
 				return subprocess.run(compose + ["exec", "-T", "postgres", "psql", "-U", "flowtest", "-d", "paymentdb", "-v", "ON_ERROR_STOP=1", "-At", "-c", sql], env=env, check=True, capture_output=True, text=True).stdout.strip()
 
+			def mongo_eval(js):
+				return subprocess.run(compose + ["exec", "-T", "mongo", "mongosh", "--quiet", "--eval", js], env=env, check=True, capture_output=True, text=True).stdout.strip()
+
 			order_sql('CREATE FUNCTION flow_fail_payment_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."Topic" = \'payment-requested\' THEN RAISE EXCEPTION \'injected outbox failure\'; END IF; RETURN NEW; END $$; CREATE TRIGGER flow_fail_payment_outbox BEFORE INSERT ON outbox_messages FOR EACH ROW EXECUTE FUNCTION flow_fail_payment_outbox();')
 			user_id = str(uuid.uuid4())
 			auth = {"Authorization": "Bearer " + token(user_id)}
@@ -179,6 +219,7 @@ def main():
 			product_id = product["productId"]
 			status, cart = request(f"http://127.0.0.1:{ports['CART']}/api/cart/items", "POST", {"productId": product_id, "name": "Test product", "unitPrice": 25, "quantity": 2}, auth)
 			assert status == 200 and cart["total"] == 50, f"Cart update failed: {status} {cart}"
+			assert mongo_eval('print(db.getSiblingDB("productservice_db").runCommand({collMod: "inventory_outbox", validator: {$expr: {$eq: [1, 0]}}}).ok)') == "1"
 			subprocess.run(compose + ["pause", "kafka"], env=env, check=True)
 			broker_paused = True
 			status, checkout = request(f"http://127.0.0.1:{ports['CART']}/api/cart/checkout", "POST", {}, {**auth, "Idempotency-Key": "saga-" + uuid.uuid4().hex})
@@ -190,6 +231,20 @@ def main():
 			print("PASS: order outbox retained during Kafka suspension; broker resumed")
 			status, cart = request(f"http://127.0.0.1:{ports['CART']}/api/cart/", headers=auth)
 			assert status == 200 and not cart["items"], f"Cart not cleared: {status} {cart}"
+			eventually("Product transaction failure", lambda: "Failed to process" in (Path(temp) / "Product.log").read_text(encoding="utf-8"))
+			status, product = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/{product_id}")
+			assert status == 200 and product["stock"] == 5 and product["reservedStock"] == 0, product
+			assert mongo_eval('print(db.getSiblingDB("productservice_db").inventory_inbox.countDocuments({}))') == "0"
+			assert mongo_eval('print(db.getSiblingDB("productservice_db").inventory_reservations.countDocuments({}))') == "0"
+			service_processes["Product"].kill()
+			service_processes["Product"].wait(timeout=30)
+			assert mongo_eval('print(db.getSiblingDB("productservice_db").runCommand({collMod: "inventory_outbox", validator: {}}).ok)') == "1"
+			product_dll = ROOT / "services" / "ProductService" / "ProductService.API" / "bin" / "Debug" / "net10.0" / "ProductService.API.dll"
+			product_log = open(Path(temp) / "Product-restart.log", "w+", encoding="utf-8")
+			logs.append(("Product restart", product_log))
+			processes.append(subprocess.Popen(["dotnet", str(product_dll)], cwd=temp, env=service_environments["Product"], stdout=product_log, stderr=subprocess.STDOUT))
+			eventually("restarted Product health", lambda: request(f"http://127.0.0.1:{ports['PRODUCT']}/health/live")[0] == 200)
+			print("PASS: Product inventory transaction rolls back on outbox failure and retries after crash")
 
 			eventually("order consumer retry after injected PostgreSQL failure", lambda: "Failed to process" in (Path(temp) / "Order.log").read_text(encoding="utf-8"))
 			assert order_sql('SELECT count(*) FROM inbox_messages') == "0", "Inbox persisted despite failed transition"
@@ -246,10 +301,15 @@ def main():
 				return any(len(row) >= 6 and row[1] == "order-created" and row[3] == row[4] and int(row[4]) >= 2 for row in (line.split() for line in output.splitlines()))
 			eventually("Analytics duplicate event offset committed", analytics_caught_up)
 			assert analytics_count() == 1, "Analytics duplicated the order-created event"
-			print("PASS: Analytics deduplicates replayed outbox event and commits its offset")
+			def product_caught_up():
+				output = subprocess.run(compose + ["exec", "-T", "kafka", "kafka-consumer-groups", "--bootstrap-server", "kafka:29092", "--describe", "--group", "product-service-group"], env=env, check=True, capture_output=True, text=True).stdout
+				return any(len(row) >= 6 and row[1] == "order-created" and row[3] == row[4] and int(row[4]) >= 2 for row in (line.split() for line in output.splitlines()))
+			eventually("Product duplicate event offset committed", product_caught_up)
+			status, product = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/{product_id}")
+			assert status == 200 and product["stock"] == 3 and product["reservedStock"] == 2, product
+			assert mongo_eval(f'print(db.getSiblingDB("productservice_db").inventory_outbox.countDocuments({{key: "{order_id}"}}))') == "1"
+			print("PASS: Analytics and Product deduplicate replayed order event")
 
-			def mongo_eval(js):
-				return subprocess.run(compose + ["exec", "-T", "mongo", "mongosh", "--quiet", "--eval", js], env=env, check=True, capture_output=True, text=True).stdout.strip()
 			mongo_eval('db.getSiblingDB("analyticsservice_db").runCommand({collMod: "events", validator: {$nor: [{SourceTopic: "order-cancelled"}]}})')
 			status, scarce = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/", "POST", {"sku": "scarce-" + uuid.uuid4().hex, "name": "Scarce", "description": "test", "category": "test", "price": 10, "currency": "INR", "initialStock": 1}, auth)
 			assert status == 201, f"Scarce product creation failed: {status} {scarce}"
@@ -292,16 +352,18 @@ def main():
 			signature = hmac.new(WEBHOOK_SECRET.encode(), raw, hashlib.sha256).hexdigest()
 			status, result = request(f"http://127.0.0.1:{ports['PAYMENT']}/api/payments/webhooks/razorpay", "POST", failure_webhook, {"X-Razorpay-Signature": signature, "X-Razorpay-Event-Id": "evt_failed"})
 			assert status == 200, f"Failure webhook failed: {status} {result}"
-			eventually("payment-failure cancellation", cancelled)
-
-			def released():
-				status, product = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/{failure_product_id}")
-				return status == 200 and product["stock"] == 3 and product["reservedStock"] == 0
-			eventually("stock compensation after payment failure", released)
 			status, payment = request(f"http://127.0.0.1:{ports['PAYMENT']}/api/payments/order/{order_id}", headers=auth)
-			assert status == 200 and payment["status"] == 2, f"Payment not failed: {payment}"
+			assert status == 200 and payment["status"] == 0, f"Failed attempt incorrectly resolved payment: {payment}"
+			status, product = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/{failure_product_id}")
+			assert status == 200 and product["stock"] == 2 and product["reservedStock"] == 1, product
+			assert payment_sql(f'SELECT count(*) FROM outbox_messages WHERE "Key" = \'{order_id}\' AND "Topic" = \'payment-status\'') == "0"
+			capture = {"event": "payment.captured", "payload": {"payment": {"entity": {"id": "pay_retry", "order_id": payment["providerOrderId"]}}}}
+			signature = hmac.new(WEBHOOK_SECRET.encode(), json.dumps(capture, separators=(",", ":")).encode(), hashlib.sha256).hexdigest()
+			status, result = request(f"http://127.0.0.1:{ports['PAYMENT']}/api/payments/webhooks/razorpay", "POST", capture, {"X-Razorpay-Signature": signature, "X-Razorpay-Event-Id": "evt_retry"})
+			assert status == 200, result
+			eventually("order confirmed after another payment attempt", confirmed)
 			assert len(Provider.calls) == 2, Provider.calls
-			print("PASS: failed payment cancels order and releases reserved stock")
+			print("PASS: failed payment attempt keeps stock reserved; a later capture confirms the order")
 
 			status, product = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/", "POST", {"sku": "race-" + uuid.uuid4().hex, "name": "Race test", "description": "test", "category": "test", "price": 10, "currency": "INR", "initialStock": 3}, auth)
 			assert status == 201, f"Race product creation failed: {status} {product}"
@@ -322,11 +384,64 @@ def main():
 			threads = [threading.Thread(target=send_race_webhook, args=("payment.captured", "race-captured")), threading.Thread(target=send_race_webhook, args=("payment.failed", "race-failed"))]
 			for thread in threads: thread.start()
 			for thread in threads: thread.join(timeout=20)
-			assert not any(thread.is_alive() for thread in threads) and sorted(code for _, code in responses) == [200, 500], responses
-			assert payment_sql(f'SELECT count(*) FROM outbox_messages WHERE "Key" = \'{order_id}\' AND "Topic" = \'payment-status\'') == "1", "Conflicting payment outcomes were published"
-			assert payment_sql('SELECT count(*) FROM inbox_messages WHERE "EventId" IN (\'race-captured\', \'race-failed\')') == "1", "Both webhook inbox entries committed"
-			assert "DbUpdateConcurrencyException" in (Path(temp) / "Payment.log").read_text(encoding="utf-8"), "Concurrent update did not exercise the concurrency guard"
-			print("PASS: concurrent conflicting webhooks produce one payment outcome and a retryable conflict")
+			assert not any(thread.is_alive() for thread in threads) and sorted(code for _, code in responses) == [200, 200], responses
+			assert payment_sql(f'SELECT count(*) FROM outbox_messages WHERE "Key" = \'{order_id}\' AND "Topic" = \'payment-status\'') == "1", "More than one payment outcome was published"
+			assert payment_sql('SELECT count(*) FROM inbox_messages WHERE "EventId" IN (\'race-captured\', \'race-failed\')') == "2", "Attempt and capture were not recorded"
+			payment_sql('DROP TRIGGER flow_delay_payment_update ON payments; DROP FUNCTION flow_delay_payment_update();')
+			print("PASS: concurrent failed attempt and capture produce one successful outcome")
+
+			payment_sql('CREATE FUNCTION flow_fail_payment_intent() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION \'injected intent failure\'; END $$; CREATE TRIGGER flow_fail_payment_intent BEFORE INSERT ON payments FOR EACH ROW EXECUTE FUNCTION flow_fail_payment_intent();')
+			Provider.pause_next = True
+			status, product = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/", "POST", {"sku": "payment-crash-" + uuid.uuid4().hex, "name": "Payment crash", "description": "test", "category": "test", "price": 10, "currency": "INR", "initialStock": 3}, auth)
+			assert status == 201
+			status, _ = request(f"http://127.0.0.1:{ports['CART']}/api/cart/items", "POST", {"productId": product["productId"], "name": "Payment crash", "unitPrice": 10, "quantity": 1}, auth)
+			assert status == 200
+			status, checkout = request(f"http://127.0.0.1:{ports['CART']}/api/cart/checkout", "POST", {}, {**auth, "Idempotency-Key": "saga-" + uuid.uuid4().hex})
+			assert status == 200
+			order_id = checkout["orderId"]
+			eventually("Payment intent database failure", lambda: "Failed to process" in (Path(temp) / "Payment.log").read_text(encoding="utf-8"))
+			event_id = order_sql(f'SELECT "Id" FROM outbox_messages WHERE "Key" = \'{order_id}\' AND "Topic" = \'payment-requested\'')
+			assert event_id and payment_sql(f'SELECT count(*) FROM inbox_messages WHERE "EventId" = \'{event_id}\'') == "0", "Inbox committed without intent"
+			assert payment_sql(f'SELECT count(*) FROM payments WHERE "OrderId" = \'{order_id}\'') == "0"
+			assert not any(call[1]["receipt"] == order_id for call in Provider.calls), "Provider called before durable intent"
+			payment_sql('DROP TRIGGER flow_fail_payment_intent ON payments; DROP FUNCTION flow_fail_payment_intent();')
+			assert Provider.entered.wait(timeout=90), "Payment did not retry after intent failure"
+			assert payment_sql(f'SELECT "Status" FROM payments WHERE "OrderId" = \'{order_id}\'') == "Initiating"
+			assert payment_sql(f'SELECT count(*) FROM inbox_messages WHERE "EventId" = \'{event_id}\'') == "1"
+			service_processes["Payment"].kill()
+			service_processes["Payment"].wait(timeout=30)
+			Provider.release.set()
+			payment_sql(f'UPDATE payments SET "CreatedAtUtc" = now() - interval \'5 minutes\' WHERE "OrderId" = \'{order_id}\'')
+			payment_dll = ROOT / "services" / "PaymentService" / "PaymentService.API" / "bin" / "Debug" / "net10.0" / "PaymentService.API.dll"
+			restart_log = open(Path(temp) / "Payment-restart.log", "w+", encoding="utf-8")
+			logs.append(("Payment restart", restart_log))
+			processes.append(subprocess.Popen(["dotnet", str(payment_dll)], cwd=temp, env=service_environments["Payment"], stdout=restart_log, stderr=subprocess.STDOUT))
+			eventually("restarted Payment health", lambda: request(f"http://127.0.0.1:{ports['PAYMENT']}/health/live")[0] == 200)
+			payment = eventually("provider order reconciliation after crash", pending_payment)
+			assert payment["providerOrderId"] == Provider.orders[order_id]["id"]
+			assert sum(call[1]["receipt"] == order_id for call in Provider.calls) == 1, "Provider order was attempted again after crash"
+			assert payment_sql(f'SELECT count(*) FROM outbox_messages WHERE "Key" = \'{order_id}\' AND "Topic" = \'payment-status\'') == "0", "Unknown provider outcome was published as failure"
+			print("PASS: Payment crash reconciles provider order without another create request")
+			provider_order = Provider.orders[order_id]
+			provider_order["payments"] = [{"id": "pay_reconciled", "order_id": provider_order["id"], "amount": provider_order["amount"], "currency": provider_order["currency"], "status": "captured"}]
+			provider_order["status"] = "paid"
+			eventually("captured payment recovered without webhook", confirmed)
+			assert payment_sql(f'SELECT "Status" FROM payments WHERE "OrderId" = \'{order_id}\'') == "Succeeded"
+			assert payment_sql(f'SELECT count(*) FROM outbox_messages WHERE "Key" = \'{order_id}\' AND "Topic" = \'payment-status\'') == "1"
+			print("PASS: reconciliation confirms a captured payment after a missing webhook")
+
+			# Inject two distinct delivery IDs for one synthetic compensation in disposable data.
+			product_id = product["productId"]
+			payload = json.dumps({"orderId": order_id, "items": [{"productId": product_id, "quantity": 1}], "occurredOnUtc": "2026-01-01T00:00:00Z"}, separators=(",", ":"))
+			release_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+			for release_id in release_ids:
+				order_sql(f'INSERT INTO outbox_messages ("Id", "Topic", "Key", "Payload", "CreatedAtUtc", "Attempts") VALUES (\'{release_id}\', \'stock-release\', \'{order_id}\', \'{payload}\', now(), 0)')
+			def releases_processed():
+				return mongo_eval(f'print(db.getSiblingDB("productservice_db").inventory_inbox.countDocuments({{_id: {{$in: ["{release_ids[0]}", "{release_ids[1]}"]}}}}))') == "2"
+			eventually("duplicate stock release processing", releases_processed)
+			status, product = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/{product_id}")
+			assert status == 200 and product["stock"] == 3 and product["reservedStock"] == 0, product
+			print("PASS: repeated stock-release events compensate the reservation only once")
 	except Exception:
 		if started:
 			subprocess.run(compose + ["logs", "--tail", "30", "kafka"], env=env, check=False)

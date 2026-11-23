@@ -4,7 +4,9 @@ A .NET 10 backend portfolio project exploring a distributed commerce system with
 
 **Portfolio:** [PNG overview](docs/freelancer-portfolio.png) | [Animated GIF](docs/freelancer-portfolio.gif) | [PDF case study](docs/freelancer-portfolio.pdf) | [Web case study](docs/freelancer-portfolio.html) | [Architecture](docs/architecture.md)
 
-**Status: work in progress, not production-ready.** An isolated checkout saga test passes with a local payment-provider stub. Dependency advisories and failure-recovery gaps remain; a real Razorpay sandbox has not been tested. See [validation and restoration](docs/architecture.md#validation-and-restoration).
+**Status: work in progress, not production-ready.** Isolated checkout and failure-recovery tests pass with a local payment-provider stub. Product transactional inventory and Payment reconciliation are implemented in source but have not been deployed to the existing stack. MongoDB migration, dependency advisories and real Razorpay sandbox testing remain outstanding. See [validation and restoration](docs/architecture.md#validation-and-restoration).
+
+![E-commerce microservices portfolio overview](docs/freelancer-portfolio.png)
 
 ## Services at a glance
 
@@ -34,7 +36,10 @@ flowchart LR
 	Kafka --> Payment[Payment]
 	Kafka --> Notification
 	Kafka --> Analytics[Analytics]
+	Product -->|inventory outbox| Kafka
 	Payment -->|outbox| Kafka
+	Payment -->|HTTP orders and reconciliation| Razorpay[Razorpay]
+	Razorpay -->|signed webhook| Payment
 	Cart --> Redis[(Redis)]
 	Order --> PG[(PostgreSQL)]
 	Payment --> PG
@@ -51,10 +56,12 @@ This diagram describes source-level integration points, not a verified end-to-en
 - Docker Compose for local infrastructure, YARP gateway, observability packages and Razorpay integration.
 - `services\`: service projects; `shared\ECommerce.Shared\`: shared contracts and infrastructure; `gateway\`: gateway; `docker\`: Compose and initialization assets; `docs\`: architecture and portfolio.
 
+The current Order-to-Payment flow uses Kafka, not gRPC. Razorpay order creation uses its HTTP API, and signed HTTP webhooks report payment events. gRPC may be appropriate for a separate internal synchronous API, but cannot replace the provider's HTTP integration or asynchronous notifications.
+
 ## Getting started safely
 
 1. Install the .NET 10 SDK and Docker Desktop. Start Docker before attempting Compose commands.
-2. Provision your own development configuration and credentials outside source control. The local Git history contains tracked environment/backup files and settings that must be reviewed and sanitized before publishing; `.gitignore` does not remove tracked files or history. Do not copy their values into documentation or public GitHub.
+2. Provision your own development configuration and credentials outside source control. The published branch was sanitized, but ignored local files and older histories can still contain secrets; review any files and history before publishing, and rotate exposed credentials. Do not copy their values into documentation or public GitHub.
 3. Review [restoration instructions and known limitations](docs/architecture.md#validation-and-restoration). The older `STEP_BY_STEP_GUIDE.md` is historical and does not reliably match the current project layout.
 4. Check Compose configuration without displaying resolved secrets:
 
@@ -68,7 +75,7 @@ This diagram describes source-level integration points, not a verified end-to-en
    dotnet build .\services\OrderService\OrderService.slnx
    ```
 
-Do not treat this as a turnkey deployment guide: database schemas, secret management, infrastructure startup, payment provider configuration and service-to-service flows still need verification.
+Do not treat this as a turnkey deployment guide: database schemas, secret management, infrastructure startup, payment provider configuration and service-to-service flows still need verification. Product's transactional inventory consumer requires a MongoDB replica set or sharded cluster; the existing main Compose configuration uses standalone MongoDB and must be migrated with a reviewed data and credential plan before starting the updated Product image. Do not remove the existing database volume.
 
 ## API overview
 
@@ -76,7 +83,7 @@ Service-local endpoints include `/api/users`, `/api/auth`, `/api/products`, `/ap
 
 ## Validation and limitations
 
-Run the seven xUnit projects with `dotnet test .\tests\ECommerce.Tests.slnx`. With Docker Desktop running, `python .\tests\ECommerce.Tests.Integration\run_checkout_saga.py` exercises isolated checkout and compensation, Kafka suspension, Order database failure and process restart, Analytics duplicate delivery and database-write retry, and conflicting concurrent payment webhooks. It uses disposable test data and a local payment-provider stub, not Razorpay itself. Product and Payment still need crash-safe processing; User and Notification retain critical/high package advisories. See [validation and restoration](docs/architecture.md#validation-and-restoration).
+Run the seven xUnit projects with `dotnet test .\tests\ECommerce.Tests.slnx`. With Docker Desktop running, `dotnet test .\tests\ProductService.Infrastructure.Tests\ProductService.Infrastructure.Tests.csproj` runs C# inventory transaction tests on an isolated MongoDB replica set. The existing Python checkout harness (`python .\tests\ECommerce.Tests.Integration\run_checkout_saga.py`) covers broader end-to-end flows and has not yet been replaced by C#. It uses a payment-provider stub, not Razorpay itself. Product's transactional inventory change requires a migration for existing deployments; a background reconciler checks provider orders for uncertain and pending payments, but missing or conflicting results need operator attention. User and Notification retain critical/high package advisories. See [validation and restoration](docs/architecture.md#validation-and-restoration).
 
 ## Author
 

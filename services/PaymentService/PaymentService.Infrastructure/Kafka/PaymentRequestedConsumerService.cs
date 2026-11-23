@@ -5,7 +5,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PaymentService.Application.Commands.ProcessPayment;
-using PaymentService.Application.Interfaces;
 using PaymentService.Contracts;
 using System.Text.Json;
 
@@ -34,22 +33,38 @@ public sealed class PaymentRequestedConsumerService(
         consumer.Subscribe(_settings.PaymentRequestedTopic);
         logger.LogInformation("[PaymentService] Subscribed to '{Topic}'", _settings.PaymentRequestedTopic);
 
+        var failures = 0;
         while (!stoppingToken.IsCancellationRequested)
         {
+            ConsumeResult<string, string>? result = null;
             try
             {
-                var result = consumer.Consume(stoppingToken);
-                if (result?.Message?.Value is null) continue;
+                result = consumer.Consume(stoppingToken);
+                if (result is null) continue;
+                if (result.Message?.Value is null) throw new InvalidDataException("Payment request payload is required.");
 
-                var eventId = result.Message.Headers.TryGetLastBytes("eventId", out var b) && b.Length == 16
-                    ? new Guid(b).ToString() : Guid.NewGuid().ToString();
+                var headers = result.Message.Headers;
+                if (headers is null || !headers.TryGetLastBytes("eventId", out var bytes) || bytes.Length != 16)
+                    throw new InvalidDataException("Payment request requires a 16-byte eventId header.");
 
-                ProcessAsync(result.Message.Value, eventId, stoppingToken).GetAwaiter().GetResult();
+                ProcessAsync(result.Message.Value, new Guid(bytes).ToString(), stoppingToken).GetAwaiter().GetResult();
                 consumer.Commit(result);
+                failures = 0;
             }
-            catch (OperationCanceledException) { break; }
-            catch (ConsumeException ex) { logger.LogError(ex, "[PaymentService] Kafka consume error"); }
-            catch (Exception ex) { logger.LogError(ex, "[PaymentService] Unhandled processing error"); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (ConsumeException ex) when (!ex.Error.IsFatal)
+            {
+                logger.LogError(ex, "[PaymentService] Kafka consume error");
+            }
+            catch (Exception ex) when (result is not null)
+            {
+                failures++;
+                var delay = TimeSpan.FromSeconds(Math.Min(30, Math.Pow(2, Math.Min(failures - 1, 5))));
+                logger.LogError(ex, "[PaymentService] Failed to process {Offset}; retrying in {Delay}", result.TopicPartitionOffset, delay);
+                consumer.Seek(result.TopicPartitionOffset);
+                try { Task.Delay(delay, stoppingToken).GetAwaiter().GetResult(); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            }
         }
 
         consumer.Close();
@@ -58,19 +73,12 @@ public sealed class PaymentRequestedConsumerService(
     private async Task ProcessAsync(string rawJson, string eventId, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
-        var uow = scope.ServiceProvider.GetRequiredService<IPaymentUnitOfWork>();
-
-        uow.RecordInboxEvent(eventId);
-        if (!await uow.TrySaveChangesAsync(ct))
-        {
-            logger.LogDebug("[PaymentService] Duplicate eventId={EventId} — skipped", eventId);
-            return;
-        }
-
-        var evt = JsonSerializer.Deserialize<PaymentRequestedIntegrationEvent>(rawJson, Json);
-        if (evt is null) return;
+        var evt = JsonSerializer.Deserialize<PaymentRequestedIntegrationEvent>(rawJson, Json)
+            ?? throw new InvalidDataException("Payment request must not be null.");
+        if (evt.OrderId == Guid.Empty || evt.UserId == Guid.Empty || evt.Amount <= 0 || string.IsNullOrWhiteSpace(evt.Currency))
+            throw new InvalidDataException("Payment request has invalid order, user, amount or currency.");
 
         var mediator = scope.ServiceProvider.GetRequiredService<ISender>();
-        await mediator.Send(new ProcessPaymentCommand(evt.OrderId, evt.UserId, evt.Amount, evt.Currency), ct);
+        await mediator.Send(new ProcessPaymentCommand(evt.OrderId, evt.UserId, evt.Amount, evt.Currency, eventId), ct);
     }
 }

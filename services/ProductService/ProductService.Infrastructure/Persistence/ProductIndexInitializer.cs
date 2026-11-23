@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using ProductService.Domain.Entities;
 
@@ -17,17 +18,23 @@ public sealed class ProductIndexInitializer(
 {
     public async Task StartAsync(CancellationToken ct)
     {
-        var products = database.GetCollection<Product>("products");
+        var hello = await database.RunCommandAsync<BsonDocument>(new BsonDocument("hello", 1), cancellationToken: ct);
+        if (!hello.Contains("setName") && (!hello.Contains("msg") || hello["msg"] != "isdbgrid"))
+            throw new InvalidOperationException("Product inventory transactions require a MongoDB replica set or sharded cluster.");
 
+        var products = database.GetCollection<Product>("products");
         await products.Indexes.CreateManyAsync([
             new CreateIndexModel<Product>(
-                Builders<Product>.IndexKeys.Ascending(p => p.CreatedAtUtc).Ascending(p => p.Id)), // keyset pagination
+                Builders<Product>.IndexKeys.Ascending(p => p.CreatedAtUtc).Ascending(p => p.Id)),
             new CreateIndexModel<Product>(
                 Builders<Product>.IndexKeys.Ascending(p => p.Sku), new CreateIndexOptions { Unique = true }),
             new CreateIndexModel<Product>(Builders<Product>.IndexKeys.Ascending(p => p.Category))
         ], ct);
+        foreach (var (name, field) in new[] { ("inventory_inbox", "processedAt"), ("inventory_reservations", "state"), ("inventory_outbox", "published") })
+            await database.GetCollection<BsonDocument>(name).Indexes.CreateOneAsync(
+                new CreateIndexModel<BsonDocument>(Builders<BsonDocument>.IndexKeys.Ascending(field)), cancellationToken: ct);
 
-        logger.LogInformation("[ProductService] Product indexes ensured (cursor+sku+category).");
+        logger.LogInformation("[ProductService] Product and transactional inventory indexes ensured.");
     }
 
     public Task StopAsync(CancellationToken ct) => Task.CompletedTask;

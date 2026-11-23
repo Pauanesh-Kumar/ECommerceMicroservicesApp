@@ -30,6 +30,10 @@ public static class InfrastructureServiceExtensions
         // header is already attached before any retry/circuit-breaker logic runs.
         services.AddHttpClient<IPaymentGateway, RazorpayPaymentGateway>()
             .AddStandardResilienceHandler(RazorpayResilienceOptions.Configure);
+        services.AddHttpClient<RazorpayReconciliationClient>()
+            .AddStandardResilienceHandler();
+        services.Configure<PaymentReconciliationOptions>(configuration.GetSection("PaymentReconciliation"));
+        services.AddHostedService<PaymentReconciliationHostedService>();
 
         services.Configure<PaymentKafkaOptions>(configuration.GetSection(PaymentKafkaOptions.Section));
         var bootstrap = configuration["Kafka:BootstrapServers"];

@@ -51,6 +51,7 @@ services:
 
   mongo:
     image: mongo:7-jammy
+    command: ["mongod", "--replSet", "flow-rs", "--bind_ip_all"]
     ports:
       - "127.0.0.1:${FLOW_MONGO_PORT}:27017"
     tmpfs:

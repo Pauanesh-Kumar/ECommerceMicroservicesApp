@@ -30,7 +30,7 @@
     <p>.NET 10 &nbsp; / &nbsp; Kafka &nbsp; / &nbsp; PostgreSQL &nbsp; / &nbsp; MongoDB &nbsp; / &nbsp; Redis</p>
     <p><a href="../README.md">Project README</a> &nbsp; | &nbsp; <a href="architecture.md">Architecture and validation</a> &nbsp; | &nbsp; <a href="freelancer-portfolio.pdf">Download PDF</a></p>
   </header>
-  <section class="notice"><strong>Work in progress.</strong> Isolated checkout, compensation, Order recovery and Analytics duplicate-delivery tests pass using a local payment-provider stub. Product and Payment crash recovery, security advisories and a real Razorpay sandbox test remain outstanding. This is not a claim of production readiness.</section>
+  <section class="notice"><strong>Work in progress.</strong> Isolated checkout and recovery tests pass with a payment-provider stub. Product transactional inventory and Payment reconciliation are implemented in source but have not been deployed to the existing stack. MongoDB migration, dependency advisories and a real Razorpay sandbox test remain outstanding. This is not a claim of production readiness.</section>
   <section>
     <h2>Seven focused services</h2>
     <div class="grid">
@@ -44,11 +44,11 @@
     <h2>Design highlights</h2>
     <div class="grid">
       <article><h3>Service boundaries</h3><p>API, application, domain and infrastructure projects make responsibilities explicit.</p></article>
-      <article><h3>Event-driven integration</h3><p>Kafka consumers and outbox publishers support asynchronous communication across service boundaries.</p></article>
+      <article><h3>Event-driven integration</h3><p>Kafka consumers, transactional inventory and outbox publishers support asynchronous communication and duplicate handling.</p></article>
       <article><h3>Delivery &amp; observability</h3><p>Docker Compose, a YARP gateway and tracing-related packages form a basis for local deployment and diagnostics.</p></article>
     </div>
   </section>
-  <section><h2>Next steps</h2><p>Make Product and Payment event processing crash-safe, reconcile ambiguous provider outcomes, remediate dependency advisories, and verify a real test-mode payment and webhook before deployment.</p></section>
+  <section><h2>Next steps</h2><p>Validate and migrate existing Product data to an authenticated MongoDB replica set, deploy and test the updated services, remediate dependency advisories, and verify a real test-mode payment and webhook.</p></section>
   <footer>Portfolio by Pauanesh Kumar &middot; <a href="https://github.com/Pauanesh-Kumar">GitHub</a></footer>
 </main>
 </body>

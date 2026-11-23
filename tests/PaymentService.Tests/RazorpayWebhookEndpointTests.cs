@@ -22,7 +22,7 @@ public class RazorpayWebhookEndpointTests
 
     [Theory]
     [InlineData("payment.captured", PaymentStatus.Succeeded)]
-    [InlineData("payment.failed", PaymentStatus.Failed)]
+    [InlineData("payment.failed", PaymentStatus.Pending)]
     public async Task ValidSignedWebhookUsesHeaderEventId(string eventType, PaymentStatus expectedStatus)
     {
         var payment = Payment.CreatePending(Guid.NewGuid(), Guid.NewGuid(), 25m, "INR", "order_test");
@@ -37,7 +37,7 @@ public class RazorpayWebhookEndpointTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(expectedStatus, payment.Status);
         Assert.Equal("evt_test", uow.InboxId);
-        Assert.Equal("payment-status", uow.Topic);
+        Assert.Equal(eventType == "payment.captured" ? "payment-status" : null, uow.Topic);
         Assert.Equal(1, uow.Saves);
     }
 

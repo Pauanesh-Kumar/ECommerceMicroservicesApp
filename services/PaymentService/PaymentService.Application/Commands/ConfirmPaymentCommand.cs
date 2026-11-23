@@ -7,9 +7,7 @@ using System.Text.Json;
 
 namespace PaymentService.Application.Commands.ConfirmPayment;
 
-/// <summary>Called from the Razorpay webhook endpoint AFTER signature verification.
-/// This is the ONLY place a Payment transitions to Succeeded/Failed — never trust a
-/// client-side "it worked" callback without this server-to-server confirmation.</summary>
+/// <summary>Handles a verified provider webhook or an authenticated provider reconciliation result.</summary>
 public sealed record ConfirmPaymentCommand(string EventId, string ProviderOrderId, string ProviderPaymentId, bool Success, string? FailureReason) : IRequest;
 
 public sealed class ConfirmPaymentCommandHandler(
@@ -26,12 +24,17 @@ public sealed class ConfirmPaymentCommandHandler(
             throw new InvalidOperationException("Webhook references an unknown provider order.");
         }
 
+        if (!cmd.Success)
+        {
+            uow.RecordInboxEvent(cmd.EventId);
+            await uow.TrySaveChangesAsync(ct);
+            logger.LogInformation("Payment attempt {ProviderPaymentId} failed for payment {PaymentId}; the provider order may still be paid", cmd.ProviderPaymentId, payment.Id);
+            return;
+        }
+
         if (payment.Status != PaymentStatus.Pending)
         {
-            var matches = cmd.Success
-                ? payment.Status == PaymentStatus.Succeeded && payment.ProviderPaymentId == cmd.ProviderPaymentId
-                : payment.Status == PaymentStatus.Failed;
-            if (!matches)
+            if (payment.Status != PaymentStatus.Succeeded || payment.ProviderPaymentId != cmd.ProviderPaymentId)
             {
                 logger.LogError("Conflicting webhook {EventId} for payment {PaymentId} in status {Status}; reconciliation required", cmd.EventId, payment.Id, payment.Status);
                 throw new InvalidOperationException("Webhook conflicts with the resolved payment; reconciliation is required.");
@@ -41,22 +44,9 @@ public sealed class ConfirmPaymentCommandHandler(
             return;
         }
 
-        string eventType;
-        object evt;
-
-        if (cmd.Success)
-        {
-            payment.MarkSucceeded(cmd.ProviderPaymentId);
-            eventType = "PaymentProcessed";
-            evt = new PaymentProcessedIntegrationEvent(payment.OrderId, payment.Id, cmd.ProviderPaymentId, DateTime.UtcNow);
-        }
-        else
-        {
-            payment.MarkFailed(cmd.FailureReason ?? "Payment declined");
-            eventType = "PaymentFailed";
-            evt = new PaymentFailedIntegrationEvent(payment.OrderId, payment.Id, cmd.FailureReason ?? "Payment declined", DateTime.UtcNow);
-        }
-
+        payment.MarkSucceeded(cmd.ProviderPaymentId);
+        var evt = new PaymentProcessedIntegrationEvent(payment.OrderId, payment.Id, cmd.ProviderPaymentId, DateTime.UtcNow);
+        const string eventType = "PaymentProcessed";
         uow.EnqueueOutboxMessage("payment-status", payment.OrderId.ToString(),
             JsonSerializer.Serialize(new EventEnvelope(eventType, JsonSerializer.Serialize(evt, Json)), Json));
         uow.RecordInboxEvent(cmd.EventId);

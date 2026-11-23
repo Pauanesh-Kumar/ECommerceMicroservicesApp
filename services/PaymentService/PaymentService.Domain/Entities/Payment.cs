@@ -1,6 +1,6 @@
 namespace PaymentService.Domain.Entities;
 
-public enum PaymentStatus { Pending, Succeeded, Failed }
+public enum PaymentStatus { Pending, Succeeded, Failed, Initiating }
 
 public sealed class Payment
 {
@@ -23,11 +23,25 @@ public sealed class Payment
     public DateTime CreatedAtUtc { get; private set; } = DateTime.UtcNow;
     public DateTime? ProcessedAtUtc { get; private set; }
 
+    public static Payment CreateInitiating(Guid orderId, Guid userId, decimal amount, string currency) => new()
+    {
+        OrderId = orderId, UserId = userId, Amount = amount, Currency = currency,
+        Status = PaymentStatus.Initiating
+    };
+
     public static Payment CreatePending(Guid orderId, Guid userId, decimal amount, string currency, string providerOrderId) => new()
     {
         OrderId = orderId, UserId = userId, Amount = amount, Currency = currency,
         Status = PaymentStatus.Pending, ProviderOrderId = providerOrderId
     };
+
+    public void SetProviderOrder(string providerOrderId)
+    {
+        if (Status != PaymentStatus.Initiating || string.IsNullOrWhiteSpace(providerOrderId))
+            throw new InvalidOperationException("A provider order can only be attached to an initiating payment.");
+        ProviderOrderId = providerOrderId;
+        Status = PaymentStatus.Pending;
+    }
 
     public void MarkSucceeded(string providerPaymentId)
     {
