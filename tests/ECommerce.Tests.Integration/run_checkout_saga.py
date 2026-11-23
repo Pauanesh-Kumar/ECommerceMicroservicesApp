@@ -116,6 +116,8 @@ def main():
 	project = "ecommerce-saga-test-" + uuid.uuid4().hex[:12]
 	compose = ["docker", "compose", "-p", project, "-f", str(COMPOSE)]
 	processes = []
+	service_processes = {}
+	service_environments = {}
 	logs = []
 	provider = None
 	started = False
@@ -155,9 +157,16 @@ def main():
 				dll = ROOT / "services" / f"{service}Service" / f"{service}Service.API" / "bin" / "Debug" / "net10.0" / f"{service}Service.API.dll"
 				log = open(Path(temp) / f"{service}.log", "w+", encoding="utf-8")
 				logs.append((service, log))
-				processes.append(subprocess.Popen(["dotnet", str(dll)], cwd=temp, env=service_env, stdout=log, stderr=subprocess.STDOUT))
+				process = subprocess.Popen(["dotnet", str(dll)], cwd=temp, env=service_env, stdout=log, stderr=subprocess.STDOUT)
+				processes.append(process)
+				service_processes[service] = process
+				service_environments[service] = service_env
 				eventually(f"{service} health", lambda: request(f"http://127.0.0.1:{ports[service.upper()]}/health/live")[0] == 200)
 
+			def order_sql(sql):
+				return subprocess.run(compose + ["exec", "-T", "postgres", "psql", "-U", "flowtest", "-d", "orderdb", "-v", "ON_ERROR_STOP=1", "-At", "-c", sql], env=env, check=True, capture_output=True, text=True).stdout.strip()
+
+			order_sql('CREATE FUNCTION flow_fail_payment_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."Topic" = \'payment-requested\' THEN RAISE EXCEPTION \'injected outbox failure\'; END IF; RETURN NEW; END $$; CREATE TRIGGER flow_fail_payment_outbox BEFORE INSERT ON outbox_messages FOR EACH ROW EXECUTE FUNCTION flow_fail_payment_outbox();')
 			user_id = str(uuid.uuid4())
 			auth = {"Authorization": "Bearer " + token(user_id)}
 			status, product = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/", "POST", {"sku": "integration-" + uuid.uuid4().hex, "name": "Test product", "description": "test", "category": "test", "price": 25, "currency": "INR", "initialStock": 5}, auth)
@@ -165,11 +174,22 @@ def main():
 			product_id = product["productId"]
 			status, cart = request(f"http://127.0.0.1:{ports['CART']}/api/cart/items", "POST", {"productId": product_id, "name": "Test product", "unitPrice": 25, "quantity": 2}, auth)
 			assert status == 200 and cart["total"] == 50, f"Cart update failed: {status} {cart}"
+			subprocess.run(compose + ["stop", "kafka"], env=env, check=True)
 			status, checkout = request(f"http://127.0.0.1:{ports['CART']}/api/cart/checkout", "POST", {}, {**auth, "Idempotency-Key": "saga-" + uuid.uuid4().hex})
 			assert status == 200, f"Checkout failed: {status} {checkout}"
 			order_id = checkout["orderId"]
+			assert order_sql(f'SELECT count(*) FROM outbox_messages WHERE "Key" = \'{order_id}\' AND "Topic" = \'order-created\' AND "ProcessedAtUtc" IS NULL') == "1", "Order event was not retained during the Kafka outage"
+			subprocess.run(compose + ["start", "--wait", "--wait-timeout", "180", "kafka"], env=env, check=True)
+			print("PASS: order outbox retained during Kafka outage; broker restarted")
 			status, cart = request(f"http://127.0.0.1:{ports['CART']}/api/cart/", headers=auth)
 			assert status == 200 and not cart["items"], f"Cart not cleared: {status} {cart}"
+
+			eventually("order consumer retry after injected PostgreSQL failure", lambda: "Failed to process" in (Path(temp) / "Order.log").read_text(encoding="utf-8"))
+			assert order_sql('SELECT count(*) FROM inbox_messages') == "0", "Inbox persisted despite failed transition"
+			assert order_sql(f'SELECT "Status" FROM orders WHERE "Id" = \'{order_id}\'') == "Pending", "Order transition did not roll back"
+			assert order_sql('SELECT count(*) FROM outbox_messages WHERE "Topic" = \'payment-requested\'') == "0", "Outbox persisted despite failed transition"
+			order_sql('DROP TRIGGER flow_fail_payment_outbox ON outbox_messages; DROP FUNCTION flow_fail_payment_outbox();')
+			print("PASS: failed order transition rolls back inbox/outbox and Kafka retries")
 
 			def pending_payment():
 				status, payment = request(f"http://127.0.0.1:{ports['PAYMENT']}/api/payments/order/{order_id}", headers=auth)
@@ -180,11 +200,18 @@ def main():
 			status, product = request(f"http://127.0.0.1:{ports['PRODUCT']}/api/products/{product_id}")
 			assert status == 200 and product["stock"] == 3 and product["reservedStock"] == 2, product
 
+			service_processes["Order"].kill()
+			service_processes["Order"].wait(timeout=30)
 			webhook = {"event": "payment.captured", "payload": {"payment": {"entity": {"id": "pay_test", "order_id": payment["providerOrderId"]}}}}
 			raw = json.dumps(webhook, separators=(",", ":")).encode()
 			signature = hmac.new(WEBHOOK_SECRET.encode(), raw, hashlib.sha256).hexdigest()
 			status, result = request(f"http://127.0.0.1:{ports['PAYMENT']}/api/payments/webhooks/razorpay", "POST", webhook, {"X-Razorpay-Signature": signature, "X-Razorpay-Event-Id": "evt_test"})
 			assert status == 200, f"Webhook failed: {status} {result}"
+			order_dll = ROOT / "services" / "OrderService" / "OrderService.API" / "bin" / "Debug" / "net10.0" / "OrderService.API.dll"
+			restart_log = open(Path(temp) / "Order-restart.log", "w+", encoding="utf-8")
+			logs.append(("Order restart", restart_log))
+			processes.append(subprocess.Popen(["dotnet", str(order_dll)], cwd=temp, env=service_environments["Order"], stdout=restart_log, stderr=subprocess.STDOUT))
+			eventually("restarted Order health", lambda: request(f"http://127.0.0.1:{ports['ORDER']}/health/live")[0] == 200)
 
 			def confirmed():
 				status, orders = request(f"http://127.0.0.1:{ports['ORDER']}/api/orders/user/{user_id}", headers=auth)
@@ -192,6 +219,7 @@ def main():
 					return next((o for o in orders["data"] if o["orderId"] == order_id and o["status"] == "Confirmed"), None)
 				return None
 			eventually("order confirmation after payment-status Kafka event", confirmed)
+			print("PASS: order saga resumes after abrupt Order process termination")
 			status, payment = request(f"http://127.0.0.1:{ports['PAYMENT']}/api/payments/order/{order_id}", headers=auth)
 			assert status == 200 and payment["status"] == 1, f"Payment not succeeded: {payment}"
 			status, result = request(f"http://127.0.0.1:{ports['PAYMENT']}/api/payments/webhooks/razorpay", "POST", webhook, {"X-Razorpay-Signature": signature, "X-Razorpay-Event-Id": "evt_test"})

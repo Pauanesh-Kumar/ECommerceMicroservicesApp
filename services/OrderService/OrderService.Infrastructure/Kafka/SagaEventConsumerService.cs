@@ -39,40 +39,57 @@ public sealed class SagaEventConsumerService(
         consumer.Subscribe([_settings.ProductStockTopic, _settings.PaymentStatusTopic]);
         logger.LogInformation("[OrderService] Subscribed to {Topics}", string.Join(",", _settings.ProductStockTopic, _settings.PaymentStatusTopic));
 
+        var failures = 0;
         while (!stoppingToken.IsCancellationRequested)
         {
+            ConsumeResult<string, string>? result = null;
             try
             {
-                var result = consumer.Consume(stoppingToken);
+                result = consumer.Consume(stoppingToken);
                 if (result?.Message?.Value is null) continue;
 
                 var eventId = ExtractEventId(result.Message.Headers);
                 ProcessAsync(result.Topic, result.Message.Value, eventId, stoppingToken).GetAwaiter().GetResult();
                 consumer.Commit(result);
+                failures = 0;
             }
-            catch (OperationCanceledException) { break; }
-            catch (ConsumeException ex) { logger.LogError(ex, "[OrderService] Kafka consume error"); }
-            catch (Exception ex) { logger.LogError(ex, "[OrderService] Unhandled saga-event processing error"); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (ConsumeException ex) when (!ex.Error.IsFatal)
+            {
+                logger.LogError(ex, "[OrderService] Kafka consume error");
+            }
+            catch (Exception ex) when (result is not null)
+            {
+                failures++;
+                var delay = TimeSpan.FromSeconds(Math.Min(30, Math.Pow(2, Math.Min(failures - 1, 5))));
+                logger.LogError(ex, "[OrderService] Failed to process {Offset}; retrying in {Delay}", result.TopicPartitionOffset, delay);
+                consumer.Seek(result.TopicPartitionOffset);
+                try { Task.Delay(delay, stoppingToken).GetAwaiter().GetResult(); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            }
         }
 
         consumer.Close();
     }
 
     private static Guid ExtractEventId(Headers headers)
-        => headers.TryGetLastBytes("eventId", out var bytes) && bytes.Length == 16 ? new Guid(bytes) : Guid.NewGuid();
+        => headers is not null && headers.TryGetLastBytes("eventId", out var bytes) && bytes.Length == 16
+            ? new Guid(bytes)
+            : throw new InvalidDataException("Saga event requires a 16-byte eventId header.");
 
     private async Task ProcessAsync(string topic, string rawJson, Guid eventId, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OrderDbContext>();
 
-        db.InboxMessages.Add(new InboxMessage { EventId = eventId });
-        try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException) { logger.LogDebug("[OrderService] Duplicate eventId={EventId} — skipped", eventId); return; }
+        if (await db.InboxMessages.AnyAsync(message => message.EventId == eventId, ct))
+        {
+            logger.LogDebug("[OrderService] Duplicate eventId={EventId} — skipped", eventId);
+            return;
+        }
 
-        var envelope = JsonSerializer.Deserialize<EventEnvelope>(rawJson, Json);
-        if (envelope is null) return;
-
+        var envelope = JsonSerializer.Deserialize<EventEnvelope>(rawJson, Json)
+            ?? throw new InvalidDataException("Saga event envelope must not be null.");
         var resolver = scope.ServiceProvider.GetRequiredService<OrderEventStrategyResolver>();
         var strategy = resolver.Resolve(topic, envelope.EventType);
         if (strategy is null)
@@ -81,6 +98,10 @@ public sealed class SagaEventConsumerService(
             return;
         }
 
+        // The strategy and unit of work share this scoped context: its SaveChanges
+        // commits the inbox record together with the order transition and outbox.
+        db.InboxMessages.Add(new InboxMessage { EventId = eventId });
         await strategy.HandleAsync(envelope.Payload, ct);
+        await db.SaveChangesAsync(ct);
     }
 }

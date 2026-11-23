@@ -3,9 +3,11 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using PaymentService.Infrastructure.Gateways;
+using PaymentService.Infrastructure.Resilience;
 
 namespace PaymentService.Tests;
 
@@ -33,6 +35,24 @@ public class RazorpayGatewayTests
     }
 
     [Fact]
+    public async Task ResiliencePipelineDoesNotRetryOrderCreationPost()
+    {
+        var handler = new UnavailableHandler();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddHttpClient("provider")
+            .ConfigurePrimaryHttpMessageHandler(() => handler)
+            .AddStandardResilienceHandler(RazorpayResilienceOptions.Configure);
+        using var provider = services.BuildServiceProvider();
+        var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient("provider");
+
+        using var response = await client.PostAsync("https://example.test/v1/orders", new StringContent("{}"));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal(1, handler.Attempts);
+    }
+
+    [Fact]
     public void WebhookSignatureRequiresMatchingHmac()
     {
         const string payload = "{\"event\":\"payment.captured\"}";
@@ -43,6 +63,17 @@ public class RazorpayGatewayTests
         Assert.True(gateway.VerifySignature(payload, signature));
         Assert.False(gateway.VerifySignature(payload + " ", signature));
         Assert.False(gateway.VerifySignature(payload, ""));
+    }
+
+    private sealed class UnavailableHandler : HttpMessageHandler
+    {
+        public int Attempts { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Attempts++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        }
     }
 
     private sealed class RecordingHandler : HttpMessageHandler
