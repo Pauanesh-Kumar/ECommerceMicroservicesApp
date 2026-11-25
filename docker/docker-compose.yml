@@ -94,6 +94,29 @@ services:
     networks:
       - ecommerce-net
 
+  # Dedicated reporting store (read model fed by AnalyticsService from Kafka) — keeps BI/Power BI
+  # queries off the Order OLTP database, preserving database-per-service.
+  postgres-reporting:
+    image: postgres:16-alpine
+    container_name: ecommerce_postgres_reporting
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_REPORTING_DB}
+      POSTGRES_USER:     ${POSTGRES_REPORTING_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_REPORTING_PASS}
+    ports:
+      - "5438:5432"
+    volumes:
+      - postgres_reporting_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_REPORTING_USER} -d ${POSTGRES_REPORTING_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ecommerce-net
+
   # ──────────────────────────────────────────────────────────────
   # DATABASES — MongoDB (one container per service)
   # ──────────────────────────────────────────────────────────────
@@ -387,8 +410,7 @@ services:
       Database__EnableSensitiveDataLogging: "false"
       ExternalAuth__Google__ClientId:       ${ExternalAuth__Google__ClientId}
       ExternalAuth__Google__ClientSecret:   ${ExternalAuth__Google__ClientSecret}
-    ports:
-      - "${USERSERVICE_HOST_PORT}:8080"
+    # Not published to the host: reachable only through api-gateway (see docker-compose.debug-ports.yml).
     depends_on:
       postgres-user:
         condition: service_healthy
@@ -436,8 +458,6 @@ services:
       Jwt__Key:      ${Jwt__Key}
       Jwt__Issuer:   ${Jwt__Issuer}
       Jwt__Audience: ${Jwt__Audience}
-    ports:
-      - "${NOTIFICATION_API_HOST_PORT}:8082"
     depends_on:
       mongodb-notification:
         condition: service_healthy
@@ -476,8 +496,6 @@ services:
       Jwt__Key:      ${Jwt__Key}
       Jwt__Issuer:   ${Jwt__Issuer}
       Jwt__Audience: ${Jwt__Audience}
-    ports:
-      - "${PRODUCTSERVICE_HOST_PORT}:8081"
     depends_on:
       mongodb-product:
         condition: service_healthy
@@ -515,8 +533,6 @@ services:
       Jwt__Key:      ${Jwt__Key}
       Jwt__Issuer:   ${Jwt__Issuer}
       Jwt__Audience: ${Jwt__Audience}
-    ports:
-      - "${CARTSERVICE_HOST_PORT}:8083"
     depends_on:
       redis:
         condition: service_healthy
@@ -553,8 +569,6 @@ services:
       Jwt__Key:      ${Jwt__Key}
       Jwt__Issuer:   ${Jwt__Issuer}
       Jwt__Audience: ${Jwt__Audience}
-    ports:
-      - "${ORDERSERVICE_HOST_PORT}:8084"
     depends_on:
       postgres-order:
         condition: service_healthy
@@ -595,8 +609,6 @@ services:
       Jwt__Key:      ${Jwt__Key}
       Jwt__Issuer:   ${Jwt__Issuer}
       Jwt__Audience: ${Jwt__Audience}
-    ports:
-      - "${PAYMENTSERVICE_HOST_PORT}:8085"
     depends_on:
       postgres-payment:
         condition: service_healthy
@@ -631,17 +643,15 @@ services:
       ASPNETCORE_URLS:        http://+:${ANALYTICSSERVICE_HOST_PORT}
       ConnectionStrings__AnalyticsServiceDb: >-
         mongodb://${MONGO_ANALYTICS_APP_USER}:${MONGO_ANALYTICS_APP_PASSWORD}@mongodb-analytics:27017/${MONGO_ANALYTICS_DB}?authSource=${MONGO_ANALYTICS_DB}
-      ConnectionStrings__AnalyticsReportingDb: ${ConnectionStrings__OrderServiceDb}
+      ConnectionStrings__AnalyticsReportingDb: ${ConnectionStrings__AnalyticsReportingDb}
       Kafka__BootstrapServers: ${Kafka__BootstrapServers}
       Jwt__Key:      ${Jwt__Key}
       Jwt__Issuer:   ${Jwt__Issuer}
       Jwt__Audience: ${Jwt__Audience}
-    ports:
-      - "${ANALYTICSSERVICE_HOST_PORT}:8086"
     depends_on:
       mongodb-analytics:
         condition: service_healthy
-      postgres-order:
+      postgres-reporting:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -679,38 +689,12 @@ services:
       ReverseProxy__Clusters__notification-service-cluster__Destinations__primary__Address: http://notification-api:${NOTIFICATION_API_HOST_PORT}
       Services__UserServiceBaseUrl:         http://userservice-api:${USERSERVICE_HOST_PORT}
       Services__NotificationServiceBaseUrl: http://notification-api:${NOTIFICATION_API_HOST_PORT}
-      # ── GraphQL routes, reusing the existing REST clusters above ──────────
-      ReverseProxy__Routes__users-graphql__ClusterId: user-service-cluster
-      ReverseProxy__Routes__users-graphql__Match__Path: /graphql/users
-      ReverseProxy__Routes__users-graphql__Transforms__0__PathSet: /graphql
-      ReverseProxy__Routes__notifications-graphql__ClusterId: notification-service-cluster
-      ReverseProxy__Routes__notifications-graphql__Match__Path: /graphql/notifications
-      ReverseProxy__Routes__notifications-graphql__Transforms__0__PathSet: /graphql
-      # ── NEW: Product / Cart / Order / Payment / Analytics routes+clusters ──
-      ReverseProxy__Routes__product-service-route__ClusterId: product-service-cluster
-      ReverseProxy__Routes__product-service-route__Match__Path: /api/products/{**catch-all}
+      # Routes (GraphQL, anonymous webhook, per-route auth) live in the gateway's appsettings.json;
+      # only the internal cluster addresses are environment-specific.
       ReverseProxy__Clusters__product-service-cluster__Destinations__primary__Address: http://productservice-api:${PRODUCTSERVICE_HOST_PORT}
-
-      ReverseProxy__Routes__cart-service-route__ClusterId: cart-service-cluster
-      ReverseProxy__Routes__cart-service-route__Match__Path: /api/cart/{**catch-all}
       ReverseProxy__Clusters__cart-service-cluster__Destinations__primary__Address: http://cartservice-api:${CARTSERVICE_HOST_PORT}
-
-      ReverseProxy__Routes__order-service-route__ClusterId: order-service-cluster
-      ReverseProxy__Routes__order-service-route__Match__Path: /api/orders/{**catch-all}
       ReverseProxy__Clusters__order-service-cluster__Destinations__primary__Address: http://orderservice-api:${ORDERSERVICE_HOST_PORT}
-
-      # Payment webhook must stay reachable WITHOUT the gateway's JWT policy — kept
-      # as its own unauthenticated route ahead of the general payment-service-route.
-      ReverseProxy__Routes__payment-webhook-route__ClusterId: payment-service-cluster
-      ReverseProxy__Routes__payment-webhook-route__Match__Path: /api/payments/webhooks/{**catch-all}
-      ReverseProxy__Routes__payment-service-route__ClusterId: payment-service-cluster
-      ReverseProxy__Routes__payment-service-route__AuthorizationPolicy: default
-      ReverseProxy__Routes__payment-service-route__Match__Path: /api/payments/{**catch-all}
       ReverseProxy__Clusters__payment-service-cluster__Destinations__primary__Address: http://paymentservice-api:${PAYMENTSERVICE_HOST_PORT}
-
-      ReverseProxy__Routes__analytics-service-route__ClusterId: analytics-service-cluster
-      ReverseProxy__Routes__analytics-service-route__AuthorizationPolicy: default
-      ReverseProxy__Routes__analytics-service-route__Match__Path: /api/analytics/{**catch-all}
       ReverseProxy__Clusters__analytics-service-cluster__Destinations__primary__Address: http://analyticsservice-api:${ANALYTICSSERVICE_HOST_PORT}
     ports:
       - "${APIGATEWAY_HOST_PORT}:${APIGATEWAY_HOST_PORT}"
@@ -749,6 +733,7 @@ volumes:
   postgres_user_data:
   postgres_order_data:
   postgres_payment_data:
+  postgres_reporting_data:
   mongodb_product_data:
   mongodb_notification_data:
   mongodb_analytics_data:

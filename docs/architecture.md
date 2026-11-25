@@ -9,14 +9,17 @@ flowchart TB
 	Client[Client] --> Gateway[YARP Gateway]
 	Gateway --> User[User API]
 	Gateway --> Notification[Notification API]
-	Client --> Cart[Cart API]
-	Client --> Product[Product API]
-	Cart -->|HTTP| Order[Order API]
+	Gateway --> Cart[Cart API]
+	Gateway --> Product[Product API]
+	Gateway --> Order[Order API]
+	Gateway --> Payment[Payment API]
+	Gateway --> Analytics[Analytics API]
+	Cart -->|HTTP| Order
 	Order -->|outbox publisher| Bus[(Kafka)]
 	Bus --> Product
-	Bus --> Payment[Payment]
+	Bus --> Payment
 	Bus --> Notification
-	Bus --> Analytics[Analytics]
+	Bus --> Analytics
 	Product -->|inventory outbox publisher| Bus
 	Payment -->|outbox publisher| Bus
 	Payment -->|HTTP orders / reconciliation| Provider[Razorpay]
@@ -29,7 +32,7 @@ flowchart TB
 	Analytics --> Reporting[(PostgreSQL reporting)]
 ```
 
-The gateway reads YARP (Yet Another Reverse Proxy) routes from configuration and also aggregates User and Notification data. Cart reaches Order over HTTP, and Order to Payment runs asynchronously over Kafka. Razorpay order creation uses its HTTP API, and its signed webhooks report payment events.
+The gateway is the only published entry point: every client request, including Product, Cart, Order, Payment and Analytics, goes through YARP (Yet Another Reverse Proxy) routes defined in the tracked `yarp.routes.json`. Each route sets an explicit authorization policy (JWT required by default; Product reads, login and payment webhooks are public). Backend ports are not published in Docker Compose (`docker-compose.debug-ports.yml` re-publishes them for debugging). Gateway CORS allows only the configured Angular origin (`Cors:AllowedOrigins`), and Cart, Order, Payment and Product no longer enable CORS themselves. Cart reaches Order over HTTP inside the internal network, and Order to Payment runs asynchronously over Kafka. Razorpay order creation uses its HTTP API, and its signed webhooks report payment events. gRPC is not used for payment: the saga is asynchronous and provider results arrive by webhook.
 
 ## 2. Services
 
@@ -39,9 +42,9 @@ The gateway reads YARP (Yet Another Reverse Proxy) routes from configuration and
 | Notification | Notification reads and Kafka consumers for user, order and payment events |
 | Product | Catalog read and create endpoints, MongoDB repository, order-event consumer, inventory publisher |
 | Cart | Redis cart repository, HTTP order client, checkout endpoint with generated idempotency key |
-| Order | PostgreSQL repository, idempotency record, outbox and saga consumer; order, idempotency key and outbox row saved together |
+| Order | PostgreSQL repository, idempotency record, outbox and saga consumer; order, idempotency key and outbox row saved together; owner taken from the JWT, reads limited to the owner or Admin; publishes `order-placed` and `payment-processed` notification events |
 | Payment | PostgreSQL, Kafka request consumer and outbox, Razorpay gateway and webhook |
-| Analytics | Kafka consumer, MongoDB event storage, timed PostgreSQL reporting projection |
+| Analytics | Kafka consumer, MongoDB event storage, timed PostgreSQL reporting projection into a dedicated reporting database, Admin report endpoints under `/api/analytics/reports` |
 | Gateway | YARP configuration, authentication, health checks, Scalar API docs, aggregation |
 | Shared | Messaging, models, correlation, resilience, OpenTelemetry and Redis helpers |
 
@@ -71,7 +74,7 @@ Reconciliation runs every 60 seconds by default (`PaymentReconciliation:Interval
 ## 5. Data and deployment
 
 - Order and Payment use Npgsql (PostgreSQL) contexts with EF (Entity Framework) Core initial migrations, applied on startup in Development.
-- Product and Analytics use MongoDB; Cart uses Redis; Analytics also writes a PostgreSQL reporting schema from a hosted service.
+- Product and Analytics use MongoDB; Cart uses Redis; Analytics also writes a dedicated PostgreSQL reporting database (`postgres-reporting`, separate from Order) from a hosted service; raw events stay in MongoDB.
 - Product's transactions need a MongoDB replica set; the integration tests use a disposable single-node replica set.
 - Docker Compose runs the services, databases, Kafka and monitoring. `kafka-init` creates topics and the Mongo initialization scripts create application users on a fresh volume.
 

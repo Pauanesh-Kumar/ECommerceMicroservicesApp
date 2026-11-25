@@ -61,7 +61,6 @@ try
         doc.Info.Description = "Razorpay-backed payment ledger — idempotent charge creation, HMAC-verified webhook confirmation";
         return Task.CompletedTask;
     }));
-    builder.Services.AddCors(opt => opt.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
 
     builder.Services
         .AddHealthChecks()
@@ -75,7 +74,6 @@ try
     app.UseSerilogRequestLogging(o => o.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms");
     app.MapOpenApi();
     app.MapScalarApiReference(opt => opt.WithTitle("PaymentService API").WithTheme(ScalarTheme.Moon));
-    app.UseCors("AllowAll");
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapPaymentEndpoints();

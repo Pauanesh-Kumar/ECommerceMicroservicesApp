@@ -15,6 +15,11 @@ public sealed class Order
     public string Currency { get; private set; } = "INR";
     public string? CancellationReason { get; private set; }
 
+    /// <summary>Contact snapshot taken from the caller's JWT at checkout, so customer notifications
+    /// can be sent later without a synchronous lookup against UserService.</summary>
+    public string? CustomerEmail { get; private set; }
+    public string? CustomerName { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -26,12 +31,14 @@ public sealed class Order
 
     public IReadOnlyList<OrderItem> Items => _items;
 
-    public static Order Create(Guid userId, IEnumerable<OrderItem> items)
+    public static Order Create(Guid userId, IEnumerable<OrderItem> items, string? customerEmail = null, string? customerName = null)
     {
         var order = new Order
         {
             Id = Guid.NewGuid(),
             UserId = userId,
+            CustomerEmail = string.IsNullOrWhiteSpace(customerEmail) ? null : customerEmail.Trim(),
+            CustomerName = string.IsNullOrWhiteSpace(customerName) ? null : customerName.Trim(),
             Status = OrderStatus.Pending,
             CreatedAtUtc = DateTime.UtcNow,
             UpdatedAtUtc = DateTime.UtcNow

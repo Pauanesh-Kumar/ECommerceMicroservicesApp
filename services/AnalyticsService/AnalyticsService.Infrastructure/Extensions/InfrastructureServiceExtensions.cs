@@ -16,6 +16,7 @@ public static class InfrastructureServiceExtensions
         services.AddSingleton<IMongoDatabase>(sp => sp.GetRequiredService<IMongoClient>().GetDatabase("analyticsservice_db"));
 
         services.AddScoped<IAnalyticsRepository, AnalyticsRepository>();
+        services.AddScoped<IReportingRepository, ReportingRepository>();
         services.Configure<AnalyticsKafkaOptions>(configuration.GetSection(AnalyticsKafkaOptions.Section));
 
         services.AddHostedService<AllTopicsConsumerService>();

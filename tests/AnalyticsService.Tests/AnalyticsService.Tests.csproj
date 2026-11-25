@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\services\AnalyticsService\AnalyticsService.Domain\AnalyticsService.Domain.csproj" />
     <ProjectReference Include="..\..\services\AnalyticsService\AnalyticsService.Application\AnalyticsService.Application.csproj" />
+    <ProjectReference Include="..\..\services\AnalyticsService\AnalyticsService.Infrastructure\AnalyticsService.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -18,6 +18,9 @@ public static class CartEndpoints
 
         cart.MapPost("/items", async (ClaimsPrincipal user, AddCartItemRequest req, IRedisCartRepository repo, CancellationToken ct) =>
         {
+            if (req.ProductId == Guid.Empty || req.Quantity < 1 || req.Quantity > 1000 || req.UnitPrice <= 0 || string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 200)
+                return Results.BadRequest(new { error = "Invalid cart item (productId, name, quantity 1-1000, unitPrice > 0)." });
+
             var userId = GetUserId(user);
             var existing = await repo.GetAsync(userId, ct);
             var others = existing.Items.Where(i => i.ProductId != req.ProductId).ToList();

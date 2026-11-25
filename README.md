@@ -35,14 +35,17 @@ flowchart LR
 	Client[HTTP client] --> Gateway[YARP API Gateway]
 	Gateway --> User[User]
 	Gateway --> Notification[Notification]
-	Client --> Product[Product API]
-	Client --> Cart[Cart API]
-	Cart -->|HTTP checkout| Order[Order API]
+	Gateway --> Product[Product API]
+	Gateway --> Cart[Cart API]
+	Gateway --> Order[Order API]
+	Gateway --> Payment[Payment API]
+	Gateway --> Analytics[Analytics API]
+	Cart -->|HTTP checkout| Order
 	Order -->|outbox| Kafka[(Kafka)]
 	Kafka --> Product
 	Kafka --> Payment[Payment]
 	Kafka --> Notification
-	Kafka --> Analytics[Analytics]
+	Kafka --> Analytics
 	Product -->|inventory outbox| Kafka
 	Payment -->|outbox| Kafka
 	Payment -->|HTTP orders and reconciliation| Razorpay[Razorpay]
@@ -54,7 +57,7 @@ flowchart LR
 	Analytics --> Mongo
 ```
 
-Cart starts checkout over HTTP; Order, Product, Payment, Notification and Analytics then cooperate through Kafka events. Details are in [architecture](docs/architecture.md).
+Every client request enters through the YARP gateway (the only published port); backend services are internal and the gateway allows CORS only for the Angular origin. Cart starts checkout over HTTP; Order, Product, Payment, Notification and Analytics then cooperate through Kafka events. Order users come from the JWT, and analytics reports are served at `/api/analytics/reports/*` (Admin). Details are in [architecture](docs/architecture.md).
 
 ## Technology and layout
 

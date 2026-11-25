@@ -20,6 +20,8 @@ public sealed class OrderDbContext(DbContextOptions<OrderDbContext> options) : D
             b.Property(o => o.Status).HasConversion<string>().HasMaxLength(30);
             b.Property(o => o.TotalAmount).HasColumnType("numeric(18,2)");
             b.Property(o => o.Currency).HasMaxLength(3);
+            b.Property(o => o.CustomerEmail).HasMaxLength(320);
+            b.Property(o => o.CustomerName).HasMaxLength(200);
 
             // Map Postgres' built-in xmin system column as the EF concurrency token.
             b.Property(o => o.RowVersion).IsRowVersion().HasColumnName("xmin");

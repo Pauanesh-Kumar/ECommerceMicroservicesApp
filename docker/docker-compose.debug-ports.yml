@@ -1,0 +1,18 @@
+# Optional override for LOCAL DEBUGGING ONLY. Publishes backend services directly on the host,
+# bypassing the API gateway (and therefore its JWT/route policy). Never use in shared or prod environments.
+#   docker compose -f docker-compose.yml -f docker-compose.debug-ports.yml up -d
+services:
+  userservice-api:
+    ports: ["${USERSERVICE_HOST_PORT}:${USERSERVICE_HOST_PORT}"]
+  notification-api:
+    ports: ["${NOTIFICATION_API_HOST_PORT}:${NOTIFICATION_API_HOST_PORT}"]
+  productservice-api:
+    ports: ["${PRODUCTSERVICE_HOST_PORT}:${PRODUCTSERVICE_HOST_PORT}"]
+  cartservice-api:
+    ports: ["${CARTSERVICE_HOST_PORT}:${CARTSERVICE_HOST_PORT}"]
+  orderservice-api:
+    ports: ["${ORDERSERVICE_HOST_PORT}:${ORDERSERVICE_HOST_PORT}"]
+  paymentservice-api:
+    ports: ["${PAYMENTSERVICE_HOST_PORT}:${PAYMENTSERVICE_HOST_PORT}"]
+  analyticsservice-api:
+    ports: ["${ANALYTICSSERVICE_HOST_PORT}:${ANALYTICSSERVICE_HOST_PORT}"]

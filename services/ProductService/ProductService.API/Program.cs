@@ -81,7 +81,6 @@ try
         });
     });
 
-    builder.Services.AddCors(opt => opt.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
 
     builder.Services.AddHealthChecks();
 
@@ -92,7 +91,6 @@ try
     app.MapOpenApi();
     app.MapScalarApiReference(opt => opt.WithTitle("ProductService API").WithTheme(ScalarTheme.Moon).WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient));
 
-    app.UseCors("AllowAll");
     app.UseAuthentication();
     app.UseAuthorization();
 

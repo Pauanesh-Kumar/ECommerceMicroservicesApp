@@ -27,3 +27,21 @@ public sealed record PaymentFailedIntegrationEvent(
 // ── Published by Order for downstream (Notification/Analytics already listen) ──
 public sealed record OrderConfirmedIntegrationEvent(Guid OrderId, Guid UserId, decimal Amount, DateTime OccurredOnUtc);
 public sealed record OrderCancelledIntegrationEvent(Guid OrderId, Guid UserId, string Reason, DateTime OccurredOnUtc);
+
+// ── Customer-facing notification events, consumed by NotificationService ─────────────────────────
+// NotificationService owns these wire shapes (flat camelCase JSON with an eventType field) and listens on
+// the `order-placed` and `payment-processed` topics. Order publishes them because it is the service that
+// holds the customer contact snapshot and observes every order/payment outcome through its saga.
+public static class NotificationTopics
+{
+    public const string OrderPlaced = "order-placed";
+    public const string PaymentProcessed = "payment-processed";
+}
+
+public sealed record OrderPlacedNotificationEvent(
+    string EventType, Guid OrderId, Guid UserId, string Email, string? FirstName, string? LastName,
+    decimal TotalAmount, string Currency, DateTime OccurredOn);
+
+public sealed record PaymentNotificationEvent(
+    string EventType, Guid PaymentId, Guid OrderId, Guid UserId, string Email, string? FirstName, string? LastName,
+    decimal Amount, string Currency, bool Success, string? FailureReason, DateTime OccurredOn);

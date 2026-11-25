@@ -84,7 +84,6 @@ try
         doc.Info.Description = "Order lifecycle + fulfilment saga orchestration (choreography via Kafka), Postgres + transactional outbox";
         return Task.CompletedTask;
     }));
-    builder.Services.AddCors(opt => opt.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
 
     // ========== BUILD APP & CONFIGURE PIPELINE ==========
     var app = builder.Build();
@@ -105,7 +104,6 @@ try
     app.MapScalarApiReference(opt => opt.WithTitle("OrderService API").WithTheme(ScalarTheme.Moon));
 
     // CORS before Auth
-    app.UseCors("AllowAll");
 
     // Exception handling
     if (app.Environment.IsDevelopment())

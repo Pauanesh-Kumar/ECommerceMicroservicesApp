@@ -59,7 +59,6 @@ try
         doc.Info.Description = "Redis-backed shopping cart with synchronous checkout hand-off to OrderService";
         return Task.CompletedTask;
     }));
-    builder.Services.AddCors(opt => opt.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
     builder.Services.AddHealthChecks();
 
     var app = builder.Build();
@@ -67,7 +66,6 @@ try
     app.UseSerilogRequestLogging(o => o.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms");
     app.MapOpenApi();
     app.MapScalarApiReference(opt => opt.WithTitle("CartService API").WithTheme(ScalarTheme.Moon));
-    app.UseCors("AllowAll");
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapCartEndpoints();

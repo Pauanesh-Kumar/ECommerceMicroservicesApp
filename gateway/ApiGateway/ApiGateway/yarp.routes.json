@@ -1,0 +1,115 @@
+{
+  // Every client-facing request goes through the gateway. Backend services are NOT published to the host in
+  // docker-compose; the gateway reaches them over the internal network (cluster addresses are overridden via
+  // ReverseProxy__Clusters__<id>__Destinations__primary__Address environment variables there). The localhost
+  // addresses below are for `dotnet run` only.
+  // Auth: "default" = valid JWT required, "anonymous" = explicitly public. Role checks (Admin etc.) stay in each service.
+  "ReverseProxy": {
+    "Routes": {
+      "user-service-route": {
+        "ClusterId": "user-service-cluster",
+        "AuthorizationPolicy": "default",
+        "Match": { "Path": "/api/users/{**catch-all}" },
+        "Transforms": [ { "RequestHeader": "X-Correlation-ID", "Set": "{header:X-Correlation-ID}" } ]
+      },
+
+      "auth-route": {
+        "ClusterId": "user-service-cluster",
+        "Match": { "Path": "/api/auth/{**catch-all}" }
+      },
+
+      "notification-service-route": {
+        "ClusterId": "notification-service-cluster",
+        "AuthorizationPolicy": "default",
+        "Match": { "Path": "/api/notifications/{**catch-all}" },
+        "Transforms": [ { "RequestHeader": "X-Correlation-ID", "Set": "{header:X-Correlation-ID}" } ]
+      },
+
+      "users-graphql": {
+        "ClusterId": "user-service-cluster",
+        "Match": { "Path": "/graphql/users" },
+        "Transforms": [ { "PathSet": "/graphql" } ]
+      },
+
+      "notifications-graphql": {
+        "ClusterId": "notification-service-cluster",
+        "Match": { "Path": "/graphql/notifications" },
+        "Transforms": [ { "PathSet": "/graphql" } ]
+      },
+
+      "product-read-route": {
+        "ClusterId": "product-service-cluster",
+        "AuthorizationPolicy": "anonymous",
+        "Order": 1,
+        "Match": { "Path": "/api/products/{**catch-all}", "Methods": [ "GET", "HEAD", "OPTIONS" ] },
+        "Transforms": [ { "RequestHeader": "X-Correlation-ID", "Set": "{header:X-Correlation-ID}" } ]
+      },
+
+      "product-write-route": {
+        "ClusterId": "product-service-cluster",
+        "AuthorizationPolicy": "default",
+        "Order": 2,
+        "Match": { "Path": "/api/products/{**catch-all}" },
+        "Transforms": [ { "RequestHeader": "X-Correlation-ID", "Set": "{header:X-Correlation-ID}" } ]
+      },
+
+      "cart-service-route": {
+        "ClusterId": "cart-service-cluster",
+        "AuthorizationPolicy": "default",
+        "Match": { "Path": "/api/cart/{**catch-all}" },
+        "Transforms": [ { "RequestHeader": "X-Correlation-ID", "Set": "{header:X-Correlation-ID}" } ]
+      },
+
+      "order-service-route": {
+        "ClusterId": "order-service-cluster",
+        "AuthorizationPolicy": "default",
+        "Match": { "Path": "/api/orders/{**catch-all}" },
+        "Transforms": [ { "RequestHeader": "X-Correlation-ID", "Set": "{header:X-Correlation-ID}" } ]
+      },
+
+      "payment-webhook-route": {
+        "ClusterId": "payment-service-cluster",
+        "AuthorizationPolicy": "anonymous",
+        "Order": 1,
+        "Match": { "Path": "/api/payments/webhooks/{**catch-all}" }
+      },
+
+      "payment-service-route": {
+        "ClusterId": "payment-service-cluster",
+        "AuthorizationPolicy": "default",
+        "Order": 2,
+        "Match": { "Path": "/api/payments/{**catch-all}" },
+        "Transforms": [ { "RequestHeader": "X-Correlation-ID", "Set": "{header:X-Correlation-ID}" } ]
+      },
+
+      "analytics-service-route": {
+        "ClusterId": "analytics-service-cluster",
+        "AuthorizationPolicy": "default",
+        "Match": { "Path": "/api/analytics/{**catch-all}" },
+        "Transforms": [ { "RequestHeader": "X-Correlation-ID", "Set": "{header:X-Correlation-ID}" } ]
+      }
+    },
+
+    "Clusters": {
+      "user-service-cluster": {
+        "Destinations": { "primary": { "Address": "http://localhost:5042/" } },
+        "HealthCheck": {
+          "Active": { "Enabled": true, "Interval": "00:00:15", "Timeout": "00:00:05", "Policy": "ConsecutiveFailures", "Path": "/health" }
+        }
+      },
+
+      "notification-service-cluster": {
+        "Destinations": { "primary": { "Address": "http://localhost:5126/" } },
+        "HealthCheck": {
+          "Active": { "Enabled": true, "Interval": "00:00:15", "Timeout": "00:00:05", "Policy": "ConsecutiveFailures", "Path": "/health/live" }
+        }
+      },
+
+      "product-service-cluster": { "Destinations": { "primary": { "Address": "http://localhost:59480/" } } },
+      "cart-service-cluster": { "Destinations": { "primary": { "Address": "http://localhost:57913/" } } },
+      "order-service-cluster": { "Destinations": { "primary": { "Address": "http://localhost:60065/" } } },
+      "payment-service-cluster": { "Destinations": { "primary": { "Address": "http://localhost:56711/" } } },
+      "analytics-service-cluster": { "Destinations": { "primary": { "Address": "http://localhost:63697/" } } }
+    }
+  }
+}

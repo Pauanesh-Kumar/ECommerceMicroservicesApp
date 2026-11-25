@@ -29,6 +29,10 @@ public static class ProductEndpoints
 
         products.MapPost("/", async (CreateProductRequest req, ISender mediator, CancellationToken ct) =>
         {
+            if (string.IsNullOrWhiteSpace(req.Sku) || req.Sku.Length > 64 || string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 200 ||
+                req.Price <= 0 || req.InitialStock < 0 || string.IsNullOrWhiteSpace(req.Currency) || req.Currency.Length != 3)
+                return Results.BadRequest(new { error = "Invalid product (sku, name, price > 0, stock >= 0, 3-letter currency)." });
+
             var id = await mediator.Send(new CreateProductCommand(
                 req.Sku, req.Name, req.Description, req.Category, req.Price, req.Currency, req.InitialStock), ct);
             return Results.Created($"/api/products/{id}", new { productId = id });

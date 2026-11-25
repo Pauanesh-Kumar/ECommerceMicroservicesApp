@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
+using OrderService.Application.Common;
 using OrderService.Application.Interfaces;
 using OrderService.Contracts;
 using OrderService.Domain.Entities;
@@ -51,6 +52,7 @@ public sealed class ConfirmOrderCommandHandler(
 
         uow.EnqueueOutboxMessage("order-confirmed", order.Id.ToString(), JsonSerializer.Serialize(
             new OrderConfirmedIntegrationEvent(order.Id, order.UserId, order.TotalAmount, DateTime.UtcNow), Json));
+        CustomerNotifications.PaymentProcessed(uow, order, cmd.PaymentId);
 
         await uow.SaveChangesAsync(ct);
         logger.LogInformation("Order {OrderId} confirmed via PaymentId={PaymentId}", order.Id, cmd.PaymentId);
@@ -58,7 +60,7 @@ public sealed class ConfirmOrderCommandHandler(
 }
 
 // ── Cancelled: stock unavailable OR payment failed (with compensation) ──────
-public sealed record CancelOrderCommand(Guid OrderId, string Reason, bool ReleaseStock) : IRequest;
+public sealed record CancelOrderCommand(Guid OrderId, string Reason, bool ReleaseStock, bool PaymentFailed = false) : IRequest;
 
 public sealed class CancelOrderCommandHandler(
     IOrderRepository repo, IOrderUnitOfWork uow, ILogger<CancelOrderCommandHandler> logger)
@@ -76,6 +78,8 @@ public sealed class CancelOrderCommandHandler(
 
         uow.EnqueueOutboxMessage("order-cancelled", order.Id.ToString(), JsonSerializer.Serialize(
             new OrderCancelledIntegrationEvent(order.Id, order.UserId, cmd.Reason, DateTime.UtcNow), Json));
+
+        if (cmd.PaymentFailed) CustomerNotifications.PaymentFailed(uow, order, cmd.Reason);
 
         // Compensation: only needed if stock was actually reserved before the failure
         // (payment failed AFTER StockReserved — not if stock reservation itself failed).

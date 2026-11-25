@@ -2,6 +2,7 @@ using MediatR;
 using OrderService.Application.Commands;
 using OrderService.Application.Queries.GetOrders;
 using OrderService.Domain.Repositories;
+using System.Security.Claims;
 
 namespace OrderService.API.Endpoints;
 
@@ -20,10 +21,23 @@ public static class OrderEndpoints
             if (string.IsNullOrWhiteSpace(idempotencyKey))
                 return Results.BadRequest(new { error = "Idempotency-Key header is required." });
 
+            if (idempotencyKey.Length > 100)
+                return Results.BadRequest(new { error = "Idempotency-Key must be at most 100 characters." });
+
+            if (req.Items is not { Count: > 0 and <= 100 } ||
+                req.Items.Any(i => i.ProductId == Guid.Empty || i.Quantity < 1 || i.Quantity > 1000 || i.UnitPrice <= 0 || string.IsNullOrWhiteSpace(i.Name) || i.Name.Length > 200))
+                return Results.BadRequest(new { error = "Order needs 1-100 valid items (productId, name, quantity 1-1000, unitPrice > 0)." });
+
+            var sub = http.HttpContext.User.FindFirst("sub")?.Value ?? http.HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(sub, out var jwtUserId))
+                return Results.Unauthorized();
+
             var result = await mediator.Send(new CreateOrderCommand(
-                req.UserId,
+                jwtUserId,
                 req.Items.Select(i => new CreateOrderLine(i.ProductId, i.Name, i.UnitPrice, i.Quantity)).ToList(),
-                idempotencyKey), ct);
+                idempotencyKey,
+                http.HttpContext.User.FindFirst(ClaimTypes.Email)?.Value ?? http.HttpContext.User.FindFirst("email")?.Value,
+                http.HttpContext.User.FindFirst(ClaimTypes.Name)?.Value ?? http.HttpContext.User.FindFirst("name")?.Value), ct);
 
             return result.WasAlreadyProcessed
                 ? Results.Ok(new { orderId = result.OrderId })
@@ -57,9 +71,14 @@ public static class OrderEndpoints
         Guid userId,
         string? cursor,
         int? limit,
+        ClaimsPrincipal caller,
         ISender mediator,
         CancellationToken ct)
     {
+        var sub = caller.FindFirst("sub")?.Value ?? caller.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!caller.IsInRole("Admin") && !string.Equals(sub, userId.ToString(), StringComparison.OrdinalIgnoreCase))
+            return Results.Forbid();
+
         // Validate and clamp page size
         var pageSize = Math.Min(limit ?? DefaultPageSize, MaxPageSize);
         if (pageSize < 1) pageSize = DefaultPageSize;

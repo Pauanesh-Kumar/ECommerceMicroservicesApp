@@ -10,14 +10,12 @@ public static class CorsExtensions
     {
         var origins = configuration
             .GetSection("Cors:AllowedOrigins")
-            .Get<string[]>() ?? ["*"];
+            .Get<string[]>() ?? [];
 
         services.AddCors(opt => opt.AddPolicy(PolicyName, p =>
         {
-            if (origins is ["*"])
-                p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
-            else
-                p.WithOrigins(origins).AllowAnyMethod().AllowAnyHeader().AllowCredentials();
+            // Fail closed: only explicitly configured origins (the Angular app) are allowed; "*" is rejected.
+            p.WithOrigins(origins.Where(o => o != "*").ToArray()).AllowAnyMethod().AllowAnyHeader().AllowCredentials();
         }));
 
         return services;

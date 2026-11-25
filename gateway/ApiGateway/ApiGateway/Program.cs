@@ -21,6 +21,7 @@ try
     builder.Configuration
         .AddJsonFile("appsettings.json", optional: false)
         .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
+        .AddJsonFile("yarp.routes.json", optional: false, reloadOnChange: true) // tracked routes/clusters
         .AddEnvironmentVariables(); // highest priority — overrides all above
 
     // ── Serilog (mirrors UserService / NotificationService template for uniform logs) ──

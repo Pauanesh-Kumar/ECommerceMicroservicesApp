@@ -2,6 +2,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using OrderService.Application.Common;
 using OrderService.Application.Interfaces;
 using OrderService.Contracts;
 using OrderService.Domain.Entities;
@@ -11,7 +12,7 @@ using System.Text.Json;
 namespace OrderService.Application.Commands;
 
 public sealed record CreateOrderLine(Guid ProductId, string Name, decimal UnitPrice, int Quantity);
-public sealed record CreateOrderCommand(Guid UserId, List<CreateOrderLine> Items, string IdempotencyKey) : IRequest<CreateOrderResult>;
+public sealed record CreateOrderCommand(Guid UserId, List<CreateOrderLine> Items, string IdempotencyKey, string? CustomerEmail = null, string? CustomerName = null) : IRequest<CreateOrderResult>;
 public sealed record CreateOrderResult(Guid OrderId, bool WasAlreadyProcessed);
 
 public sealed class CreateOrderCommandValidator : AbstractValidator<CreateOrderCommand>
@@ -50,7 +51,7 @@ public sealed class CreateOrderCommandHandler(
             return new CreateOrderResult(id, true);
         }
 
-        var order = Order.Create(cmd.UserId, cmd.Items.Select(i => OrderItem.Create(i.ProductId, i.Name, i.UnitPrice, i.Quantity)));
+        var order = Order.Create(cmd.UserId, cmd.Items.Select(i => OrderItem.Create(i.ProductId, i.Name, i.UnitPrice, i.Quantity)), cmd.CustomerEmail, cmd.CustomerName);
         await repo.AddAsync(order, ct);
         uow.RecordIdempotencyKey(cmd.IdempotencyKey, order.Id);
 
@@ -60,6 +61,7 @@ public sealed class CreateOrderCommandHandler(
             DateTime.UtcNow);
 
         uow.EnqueueOutboxMessage("order-created", order.Id.ToString(), JsonSerializer.Serialize(evt, Json));
+        CustomerNotifications.OrderPlaced(uow, order);
 
         try
         {
