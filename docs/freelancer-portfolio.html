@@ -63,7 +63,7 @@ footer{margin-top:3rem;color:#a7bad7;font-size:.9rem}
 <svg viewBox="0 0 960 385" role="img" aria-label="Architecture diagram: client, gateway, services, Kafka and data stores">
 <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8fb3e6"/></marker></defs>
 <rect class="n" x="10" y="150" width="100" height="50" rx="10"/><text x="60" y="180" text-anchor="middle">Client</text>
-<rect class="n" x="150" y="40" width="120" height="50" rx="10"/><text x="210" y="62" text-anchor="middle">YARP gateway</text><text class="sm" x="210" y="78" text-anchor="middle">routes by config</text>
+<rect class="n" x="150" y="40" width="120" height="50" rx="10"/><text x="210" y="62" text-anchor="middle">YARP gateway</text><text class="sm" x="210" y="78" text-anchor="middle">single entry point</text>
 <rect class="n" x="330" y="40" width="120" height="50" rx="10"/><text x="390" y="70" text-anchor="middle">User</text>
 <rect class="n" x="150" y="150" width="120" height="50" rx="10"/><text x="210" y="180" text-anchor="middle">Cart</text>
 <rect class="n" x="330" y="150" width="120" height="50" rx="10"/><text x="390" y="180" text-anchor="middle">Order</text>
@@ -77,23 +77,23 @@ footer{margin-top:3rem;color:#a7bad7;font-size:.9rem}
 <rect class="d" x="840" y="270" width="100" height="50" rx="10"/><text x="890" y="300" text-anchor="middle">MongoDB</text>
 <rect class="d" x="150" y="290" width="120" height="44" rx="10"/><text x="210" y="317" text-anchor="middle">Redis</text>
 <rect class="d" x="330" y="260" width="120" height="44" rx="10"/><text x="390" y="287" text-anchor="middle">PostgreSQL</text>
-<path class="e" d="M110 165L150 75"/><path class="e" d="M110 175H150"/><path class="e" d="M270 65H330"/><path class="e" d="M270 175H330"/>
+<path class="e" d="M110 165L150 75"/><path class="e" d="M210 90V150"/><path class="e" d="M270 65H330"/><path class="e" d="M270 175H330"/>
 <path class="e" d="M450 175H520"/><path class="e" d="M560 55H680"/><path class="e" d="M560 135H680"/><path class="e" d="M560 215H680"/><path class="e" d="M560 295H680"/>
 <path class="e" d="M800 55H840"/><path class="e" d="M800 295H840"/><path class="e" d="M800 135H840"/><path class="e" d="M210 200V290"/><path class="e" d="M390 200V260"/>
-<text class="sm" x="740" y="374" text-anchor="middle">Payment and Analytics also use PostgreSQL; outbox rows are published to Kafka</text>
+<text class="sm" x="740" y="374" text-anchor="middle">Payment and Analytics also use PostgreSQL (Analytics reports from a dedicated reporting database); outbox rows are published to Kafka</text>
 </svg>
-<p style="color:var(--mut)">Clients reach User through the YARP gateway and call Product and Cart directly. Cart starts checkout over HTTP, then Order, Product, Payment, Notification and Analytics cooperate through Kafka events.</p></section>
+<p style="color:var(--mut)">Every client request enters through the YARP gateway, the only published port; Product, Cart, Order, Payment, Analytics, User and Notification sit behind it with explicit per-route authorization, and CORS allows only the Angular origin. Cart starts checkout over HTTP inside the internal network, then Order, Product, Payment, Notification and Analytics cooperate through Kafka events.</p></section>
 
 <section><h2>Services and ownership</h2><div class="wrap"><table>
 <tr><th>Service</th><th>Responsibility</th><th>Storage / integration</th></tr>
 <tr><td>User</td><td>Registration, login, user management, roles</td><td>PostgreSQL, Kafka</td></tr>
 <tr><td>Product</td><td>Catalog reads, admin product creation, transactional inventory reservation from order events</td><td>MongoDB (replica set required), Kafka</td></tr>
 <tr><td>Cart</td><td>Read and update cart, start checkout with a forwarded bearer token</td><td>Redis, HTTP client to Order</td></tr>
-<tr><td>Order</td><td>Create orders behind an Idempotency-Key header; saga consumer moves order state</td><td>PostgreSQL, Kafka outbox and inbox</td></tr>
+<tr><td>Order</td><td>Create orders behind an Idempotency-Key header, with the owner taken from the JWT; saga consumer moves order state and publishes order and payment notification events</td><td>PostgreSQL, Kafka outbox and inbox</td></tr>
 <tr><td>Payment</td><td>Create provider orders, verify signed webhooks, reconcile uncertain payments</td><td>PostgreSQL, Kafka outbox, Razorpay HTTP</td></tr>
 <tr><td>Notification</td><td>Notification reads, consumers for user, order and payment events</td><td>MongoDB, Kafka</td></tr>
-<tr><td>Analytics</td><td>Event ingestion and a timed reporting projection</td><td>MongoDB, PostgreSQL reporting, Kafka</td></tr>
-<tr><td>Gateway</td><td>YARP routing, authentication, health checks, Scalar API docs, user and notification aggregation</td><td>HTTP</td></tr>
+<tr><td>Analytics</td><td>Event ingestion, a timed reporting projection and Admin report endpoints</td><td>MongoDB, dedicated PostgreSQL reporting database, Kafka</td></tr>
+<tr><td>Gateway</td><td>YARP routing from a tracked route file, authentication, health checks, Scalar API docs, user and notification aggregation, Angular-only CORS</td><td>HTTP</td></tr>
 </table></div></section>
 
 <section><h2>One order, step by step</h2><ol class="flow">
