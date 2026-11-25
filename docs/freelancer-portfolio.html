@@ -1,55 +1,127 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>E-Commerce Microservices | Portfolio</title>
-  <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #0b1120; color: #eef4ff; }
-    body { margin: 0; line-height: 1.6; }
-    main { max-width: 1100px; margin: auto; padding: 3rem 1.5rem; }
-    .eyebrow, h2 { color: #72e0df; }
-    h1 { font-size: clamp(2.6rem, 7vw, 5rem); line-height: 1.05; max-width: 850px; margin: .5rem 0 1.5rem; }
-    .lead { color: #c0d0e9; font-size: 1.2rem; max-width: 780px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; }
-    article, .notice { background: #16243d; border: 1px solid #34507a; border-radius: 1rem; padding: 1.4rem; }
-    article h3 { margin-top: 0; }
-    a { color: #95d8ff; }
-    a:focus-visible { outline: 3px solid #ffd479; outline-offset: 3px; }
-    section { margin-top: 3.5rem; }
-    .notice { border-color: #ffd479; color: #ffecbf; }
-    footer { margin-top: 3rem; color: #a7bad7; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E-Commerce Microservices | Architecture Case Study</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1120;--card:#16243d;--line:#34507a;--teal:#72e0df;--amber:#ffd479;--txt:#eef4ff;--mut:#b4c4de}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.6 "Segoe UI",Inter,system-ui,sans-serif}
+main{max-width:1100px;margin:auto;padding:3rem 1.5rem}
+h1{font-size:clamp(2.4rem,6vw,4.4rem);line-height:1.05;margin:.4rem 0 1rem}
+h2{color:var(--teal);margin:0 0 1rem;font-size:1.6rem}
+h3{margin:.2rem 0 .4rem;font-size:1.1rem}
+section{margin-top:3.2rem}
+.lead{color:var(--mut);font-size:1.2rem;max-width:760px}
+.tags span{display:inline-block;margin:.2rem .5rem .2rem 0;padding:.15rem .7rem;border:1px solid var(--line);border-radius:2rem;color:var(--amber);font-weight:600;font-size:.9rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem}
+.card,.notice{background:var(--card);border:1px solid var(--line);border-radius:1rem;padding:1.2rem 1.4rem}
+.card p{margin:0;color:var(--mut)}
+.notice{border-color:var(--amber);color:#ffecbf}
+.stat b{display:block;font-size:2.2rem;color:var(--amber);line-height:1.1}
+.stat span{color:var(--mut)}
+.wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:680px}
+th,td{text-align:left;padding:.6rem .8rem;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--teal);font-weight:600}
+td:first-child{font-weight:600;white-space:nowrap}
+ol.flow{counter-reset:s;list-style:none;padding:0;display:grid;gap:.8rem}
+ol.flow li{counter-increment:s;background:var(--card);border:1px solid var(--line);border-radius:1rem;padding:1rem 1.2rem 1rem 3.4rem;position:relative}
+ol.flow li::before{content:counter(s);position:absolute;left:1rem;top:.9rem;width:1.7rem;height:1.7rem;border-radius:50%;background:var(--teal);color:#0b1120;font-weight:700;text-align:center;line-height:1.7rem}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem}
+.ok li::marker{color:var(--teal)} .no li::marker{color:var(--amber)}
+li{margin:.3rem 0}
+a{color:#95d8ff} a:focus-visible{outline:3px solid var(--amber);outline-offset:3px}
+svg{width:100%;height:auto;display:block}
+svg text{fill:var(--txt);font:600 13px "Segoe UI",system-ui,sans-serif}
+.n{fill:#16243d;stroke:#72e0df;stroke-width:1.5} .k{fill:#2a1f08;stroke:#ffd479;stroke-width:1.5} .d{fill:#10192c;stroke:#34507a;stroke-width:1.5}
+.e{stroke:#8fb3e6;stroke-width:1.6;fill:none;marker-end:url(#a)}
+.sm{font-weight:400!important;font-size:11px!important;fill:#b4c4de!important}
+footer{margin-top:3rem;color:#a7bad7;font-size:.9rem}
+</style>
 </head>
-<body>
-<main>
-  <header>
-    <p class="eyebrow">SOFTWARE ENGINEERING / PORTFOLIO CASE STUDY</p>
-    <h1>E-Commerce Microservices</h1>
-    <p class="lead">A .NET backend exploring service boundaries, event-driven commerce, resilient integrations and data ownership.</p>
-    <p>.NET 10 &nbsp; / &nbsp; Kafka &nbsp; / &nbsp; PostgreSQL &nbsp; / &nbsp; MongoDB &nbsp; / &nbsp; Redis</p>
-    <p><a href="../README.md">Project README</a> &nbsp; | &nbsp; <a href="architecture.md">Architecture and validation</a> &nbsp; | &nbsp; <a href="freelancer-portfolio.pdf">Download PDF</a></p>
-  </header>
-  <section class="notice"><strong>Engineering focus.</strong> A .NET microservices portfolio featuring transactional inventory, payment reconciliation and isolated checkout and recovery tests using a payment-provider stub. See the architecture document for operational details and validation scope.</section>
-  <section>
-    <h2>Seven focused services</h2>
-    <div class="grid">
-      <article><h3>Identity &amp; catalog</h3><p>User registration and authentication alongside a MongoDB-backed product catalog.</p></article>
-      <article><h3>Cart &amp; orders</h3><p>Redis-backed carts initiate order creation through an HTTP client. Order creation records an idempotency key and outbox message.</p></article>
-      <article><h3>Payments</h3><p>Kafka-based processing, PostgreSQL persistence and a signature-verified Razorpay webhook endpoint.</p></article>
-      <article><h3>Notifications &amp; analytics</h3><p>Event consumers support notifications, event storage and a reporting projection.</p></article>
-    </div>
-  </section>
-  <section>
-    <h2>Design highlights</h2>
-    <div class="grid">
-      <article><h3>Service boundaries</h3><p>API, application, domain and infrastructure projects make responsibilities explicit.</p></article>
-      <article><h3>Event-driven integration</h3><p>Kafka consumers, transactional inventory and outbox publishers support asynchronous communication and duplicate handling.</p></article>
-      <article><h3>Delivery &amp; observability</h3><p>Docker Compose, a YARP gateway and tracing-related packages form a basis for local deployment and diagnostics.</p></article>
-    </div>
-  </section>
-  <section><h2>Verification approach</h2><p>xUnit tests and an isolated checkout harness exercise compensation, duplicate handling, recovery and signed webhook processing with a local payment-provider stub.</p></section>
-  <footer>Portfolio by Pauanesh Kumar &middot; <a href="https://github.com/Pauanesh-Kumar">GitHub</a></footer>
-</main>
-</body>
-</html>
+<body><main>
+<header>
+<p style="color:var(--teal);font-weight:600;margin:0">Architecture case study</p>
+<h1>E-Commerce Microservices</h1>
+<p class="lead">A .NET 10 backend that splits a shop into seven services and a gateway, and focuses on what goes wrong between them: duplicate messages, half-finished payments and stock that must not oversell.</p>
+<p class="tags"><span>.NET 10</span><span>Kafka</span><span>PostgreSQL</span><span>MongoDB</span><span>Redis</span><span>YARP (Yet Another Reverse Proxy)</span><span>Docker Compose</span><span>Razorpay</span><span>Self-directed project</span></p>
+<p><a href="https://github.com/Pauanesh-Kumar/ECommerceMicroservicesApp">Source on GitHub</a> &nbsp;|&nbsp; <a href="freelancer-portfolio.pdf">PDF case study</a> &nbsp;|&nbsp; <a href="architecture.md">Architecture and validation notes</a></p>
+</header>
+
+<section class="notice"><strong>Self-directed architecture and development project.</strong> Designed and built hands-on, end to end, to apply production-style distributed-systems patterns: transactional outbox, idempotent APIs, transactional inventory and payment reconciliation, verified with failure-recovery scenarios on disposable infrastructure.</section>
+
+<section><div class="grid">
+<div class="card stat"><b>7 + 1</b><span>services plus a YARP gateway</span></div>
+<div class="card stat"><b>3</b><span>data stores: PostgreSQL, MongoDB, Redis</span></div>
+<div class="card stat"><b>7</b><span>xUnit test projects, plus a Docker-based checkout harness</span></div>
+<div class="card stat"><b>8</b><span>failure scenarios rehearsed in the isolated test harness</span></div>
+</div></section>
+
+<section><h2>Architecture</h2>
+<svg viewBox="0 0 960 385" role="img" aria-label="Architecture diagram: client, gateway, services, Kafka and data stores">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8fb3e6"/></marker></defs>
+<rect class="n" x="10" y="150" width="100" height="50" rx="10"/><text x="60" y="180" text-anchor="middle">Client</text>
+<rect class="n" x="150" y="40" width="120" height="50" rx="10"/><text x="210" y="62" text-anchor="middle">YARP gateway</text><text class="sm" x="210" y="78" text-anchor="middle">routes by config</text>
+<rect class="n" x="330" y="40" width="120" height="50" rx="10"/><text x="390" y="70" text-anchor="middle">User</text>
+<rect class="n" x="150" y="150" width="120" height="50" rx="10"/><text x="210" y="180" text-anchor="middle">Cart</text>
+<rect class="n" x="330" y="150" width="120" height="50" rx="10"/><text x="390" y="180" text-anchor="middle">Order</text>
+<rect class="k" x="520" y="20" width="40" height="330" rx="10"/><text x="540" y="190" text-anchor="middle" transform="rotate(-90 540 185)">Kafka</text>
+<rect class="n" x="680" y="30" width="120" height="50" rx="10"/><text x="740" y="60" text-anchor="middle">Product</text>
+<rect class="n" x="680" y="110" width="120" height="50" rx="10"/><text x="740" y="140" text-anchor="middle">Payment</text>
+<rect class="n" x="680" y="190" width="120" height="50" rx="10"/><text x="740" y="220" text-anchor="middle">Notification</text>
+<rect class="n" x="680" y="270" width="120" height="50" rx="10"/><text x="740" y="300" text-anchor="middle">Analytics</text>
+<rect class="d" x="840" y="30" width="100" height="50" rx="10"/><text x="890" y="60" text-anchor="middle">MongoDB</text>
+<rect class="k" x="840" y="110" width="100" height="50" rx="10"/><text x="890" y="140" text-anchor="middle">Razorpay</text>
+<rect class="d" x="840" y="270" width="100" height="50" rx="10"/><text x="890" y="300" text-anchor="middle">MongoDB</text>
+<rect class="d" x="150" y="290" width="120" height="44" rx="10"/><text x="210" y="317" text-anchor="middle">Redis</text>
+<rect class="d" x="330" y="260" width="120" height="44" rx="10"/><text x="390" y="287" text-anchor="middle">PostgreSQL</text>
+<path class="e" d="M110 165L150 75"/><path class="e" d="M110 175H150"/><path class="e" d="M270 65H330"/><path class="e" d="M270 175H330"/>
+<path class="e" d="M450 175H520"/><path class="e" d="M560 55H680"/><path class="e" d="M560 135H680"/><path class="e" d="M560 215H680"/><path class="e" d="M560 295H680"/>
+<path class="e" d="M800 55H840"/><path class="e" d="M800 295H840"/><path class="e" d="M800 135H840"/><path class="e" d="M210 200V290"/><path class="e" d="M390 200V260"/>
+<text class="sm" x="740" y="374" text-anchor="middle">Payment and Analytics also use PostgreSQL; outbox rows are published to Kafka</text>
+</svg>
+<p style="color:var(--mut)">Clients reach User through the YARP gateway and call Product and Cart directly. Cart starts checkout over HTTP, then Order, Product, Payment, Notification and Analytics cooperate through Kafka events.</p></section>
+
+<section><h2>Services and ownership</h2><div class="wrap"><table>
+<tr><th>Service</th><th>Responsibility</th><th>Storage / integration</th></tr>
+<tr><td>User</td><td>Registration, login, user management, roles</td><td>PostgreSQL, Kafka</td></tr>
+<tr><td>Product</td><td>Catalog reads, admin product creation, transactional inventory reservation from order events</td><td>MongoDB (replica set required), Kafka</td></tr>
+<tr><td>Cart</td><td>Read and update cart, start checkout with a forwarded bearer token</td><td>Redis, HTTP client to Order</td></tr>
+<tr><td>Order</td><td>Create orders behind an Idempotency-Key header; saga consumer moves order state</td><td>PostgreSQL, Kafka outbox and inbox</td></tr>
+<tr><td>Payment</td><td>Create provider orders, verify signed webhooks, reconcile uncertain payments</td><td>PostgreSQL, Kafka outbox, Razorpay HTTP</td></tr>
+<tr><td>Notification</td><td>Notification reads, consumers for user, order and payment events</td><td>MongoDB, Kafka</td></tr>
+<tr><td>Analytics</td><td>Event ingestion and a timed reporting projection</td><td>MongoDB, PostgreSQL reporting, Kafka</td></tr>
+<tr><td>Gateway</td><td>YARP routing, authentication, health checks, Scalar API docs, user and notification aggregation</td><td>HTTP</td></tr>
+</table></div></section>
+
+<section><h2>One order, step by step</h2><ol class="flow">
+<li><h3>Cart starts checkout</h3>Reads the signed-in user, calls Order over HTTP and generates an idempotency key if the client sent none. A client that retries should send a stable key.</li>
+<li><h3>Order writes once</h3>The order, the idempotency record and an <code>order-created</code> outbox row are saved in a single database save, so a crash cannot leave one without the others.</li>
+<li><h3>Kafka fans out</h3>The outbox publisher sends the event. Product reserves stock, Payment opens a provider order, Notification and Analytics record it.</li>
+<li><h3>Payment settles</h3>Razorpay reports the result by signed webhook. A background reconciler asks the provider about payments left uncertain, then publishes the outcome through Payment’s own outbox.</li>
+<li><h3>Order completes or compensates</h3>The saga consumer saves its inbox entry, the state change and the next outbox row together, then commits the Kafka offset.</li>
+</ol></section>
+
+<section><h2>Reliability decisions</h2><div class="grid">
+<div class="card"><h3>Idempotent order creation</h3><p>A database-backed idempotency key makes a repeated checkout return the first result instead of a second order.</p></div>
+<div class="card"><h3>Transactional outbox and inbox</h3><p>State change and message are committed together; consumers record event IDs so at-least-once delivery does not double-apply.</p></div>
+<div class="card"><h3>Oversell-safe inventory</h3><p>Reservation, per-order state, inbox and outbox change in one MongoDB transaction with snapshot reads and majority writes.</p></div>
+<div class="card"><h3>Uncertain is not failed</h3><p>A payment saved as Initiating is never retried by POST. The reconciler matches receipt, amount and currency before acting.</p></div>
+<div class="card"><h3>Backoff, not skipping</h3><p>Failed records are retried with exponential delay up to 30 seconds; offsets only advance after success.</p></div>
+<div class="card"><h3>Signed webhooks</h3><p>Razorpay signatures are verified, and repeated or concurrent webhooks are handled by a status concurrency token.</p></div>
+</div></section>
+
+<section><h2>Verification</h2><div class="card"><h3>Failure scenarios rehearsed on disposable infrastructure</h3><ul class="ok"><li>Checkout and insufficient stock</li><li>Failed, then captured, payment</li><li>Missed webhook recovered by reconciliation</li><li>Database failures and process restarts</li><li>Concurrent webhooks and duplicate event replay</li></ul><p>A C# harness starts five APIs with disposable Kafka, PostgreSQL, a MongoDB replica set, Redis and a Razorpay-compatible stub, then checks the outcome of each scenario. Seven xUnit projects cover domain behavior, checkout, payment processing, validation and analytics limits, and Product inventory transactions have their own replica-set tests for rollback, duplicates and conflicting event IDs.</p></div></section>
+
+<section><h2>Engineering capabilities</h2><div class="grid">
+<div class="card"><h3>Service design in .NET</h3><p>Layered services with clear data ownership, health checks and API documentation.</p></div>
+<div class="card"><h3>Reliable messaging</h3><p>Outbox, inbox and deduplication on Kafka, with consumer-lag and poison-event runbooks.</p></div>
+<div class="card"><h3>Payment integrations</h3><p>Provider adapters, signed webhooks and reconciliation that treats ambiguity safely.</p></div>
+<div class="card"><h3>Failure testing</h3><p>Disposable-infrastructure harnesses that rehearse restarts, duplicates and outages.</p></div>
+</div></section>
+
+<footer><strong>Architecture and development:</strong> Pauanesh Kumar, Senior Technical Leader &amp; Architect &middot; <a href="https://github.com/Pauanesh-Kumar">github.com/Pauanesh-Kumar</a><br>
+Abbreviations: YARP (Yet Another Reverse Proxy), API (Application Programming Interface), HTTP (Hypertext Transfer Protocol), gRPC (Google Remote Procedure Call), xUnit (a .NET unit-testing framework), PDF (Portable Document Format), GIF (Graphics Interchange Format).</footer>
+</main></body></html>
